@@ -100,7 +100,7 @@ NoSpace:
 				lea		ScreenBase,a0
 				move.l	(a0),a0
 				move.w	#64,d0
-				move.w	#64,d1
+				move.w	#128,d1
 				add.w	d6,d0
 				bsr		PlotPixelBlue
 				add.w	#1,d0
@@ -122,6 +122,15 @@ NoSpace:
 				bsr		PlotPixelBlack
 			endr
 			endif
+
+				lea		ScreenBase,a0
+				move.l	(a0),a0
+				lea		SpriteBubbles,a1
+				move.l	#64,d0
+				add.l	d6,d0
+				move.l	#64,d1
+				bsr		DisplaySprite16x16MaskedShifted
+
 			
 				;DisplayOffForProfiling
 			; Sprite display test
@@ -189,6 +198,60 @@ SoundCommand:
         dc.b    0                 ; randomness of step (4bit) / fuzziness (4bit)
         dc.b    1               ; No return parameters       
 	even
+
+;=============================================================================
+; Display a sprite, 16x16 with mask & shifting, !!! no clipping !!!
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = sprite base
+; Output : -
+; Destroy :
+;		d0, d1, d2, d3
+;		a0, a1, a2
+;
+; TODO : 
+;	- optimiser avec du .b/.w (255 max pour les coord)
+;	- optimiser en enlevant le lea en trop en fin de rept
+;=============================================================================
+DisplaySprite16x16MaskedShifted:
+				move.l	d0,d3
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				lsl.l	#1,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d1,a0			; +y screen
+				add.l	d0,a0			; +x screen
+						
+				and.l	#3,d3			; keep 2 bits for shifting (0-3)
+				move.l	d3,d2		
+				lsl.l	#8,d3			; *256
+				lsl.l	#6,d2			; *64
+				add.l	d3,d2			; *320
+
+				add.l	d2,a1			; a1 = sprite
+				move.l	a1,a2
+				lea		160(a2),a2		; a2 = mask
+		rept 16	; lines
+	if 1 ; 1 = Mask on
+			rept 5 ; words
+				move.w	(a0),d0			; Get the pixels on the screen
+				and.w	(a2)+,d0		; Apply sprite mask
+				or.w	(a1)+,d0		; Apply sprite color
+				move.w	d0,(a0)+		; Write final pixel
+			endr
+
+	else
+			rept 5 ; words
+				move.w	(a1)+,(a0)+
+			endr
+	endif
+				
+				lea		118(a0),a0
+		endr
+				rts
+
+	
 ;=============================================================================
 ; Display a sprite, 8x8 with mask & shifting, !!! no clipping !!!
 ; Input : -
@@ -202,7 +265,7 @@ SoundCommand:
 ;		a0, a1, a2
 ;
 ; TODO : 
-;	- optimiser avec du .b (255 max pour les coord)
+;	- optimiser avec du .b/.w (255 max pour les coord)
 ;	- optimiser en enlevant le lea en trop en fin de rept
 ;=============================================================================
 DisplaySprite8x8MaskedShifted:
@@ -536,9 +599,11 @@ GetSinCos:
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
                 even
-Sprite:			incbin		"8x8MaskShift.bin"
+Sprite:			incbin		"Data\8x8MaskShift.bin"
 	even
-Font:			incbin 		"test.bin"				
+SpriteBubbles:	incbin		"Data\Bubbles16x16x5.bin"
+	even
+Font:			incbin 		"Data\Font8x8.bin"				
 	even
 ScreenBase:		dc.l	$20000          ; Adresse de départ de la mémoire d'écran QL
 PlotPixelAdr:	dc.l	0

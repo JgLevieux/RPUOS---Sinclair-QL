@@ -1,0 +1,3 @@
+10 start=RESPR(65536)
+20 LBYTES win1_prog_bin,start
+30 CALL start
