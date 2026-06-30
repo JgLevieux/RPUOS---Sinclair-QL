@@ -7,8 +7,9 @@ BARE_METAL			equ		1
 	ifd BARE_METAL
 DOUBLE_BUFFERING	equ		1
 	else
-;CLEAR_SCREEN_FRAME	equ		1
+CLEAR_SCREEN_FRAME	equ		1
 	endif
+;CLEAR_SCREEN_FRAME	equ		1
 
 	ifd TIMER_MODE
 CLEAR_SCREEN_COLOR	equ		$AAFFAAFF
@@ -24,7 +25,7 @@ ScreenMode02	equ		%10001000
 ; =============================================================================
 
 Start:
-				lea     NbLoop,a0
+				lea     NbLoop(pc),a0
                 move.l  #0,(a0)
 
 			; Remove QDOS, mainly for double buffering as second screen adress contain QDOS data (and  code ?)
@@ -38,16 +39,19 @@ Start:
 				move.l	a0,sp
 
 				DBGENABLE
+				;DBGBREAK
+
+				lea		SpriteFullScreen(pc),a0
 
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
 			ifd DOUBLE_BUFFERING				
-				lea		ScreenBase,a0
+				lea		ScreenBase(pc),a0
 				move.l	#$28000,(a0)
 				bsr     ClearScreen
 			endif
-				
-				lea		ScreenBase,a0
+			
+				lea		ScreenBase(pc),a0
 				move.l	#$20000,(a0)
 				bsr     ClearScreen
 
@@ -55,15 +59,13 @@ Start:
 				move.l	#$28000,(a0)					; Init draw in screen 2 to swap directly to 1
 			endif
 
-			
 MainLoop:
 			; WaitVBlank
 				jsr		WaitVBlank
 
-				
 			; Double buffering
 			ifd DOUBLE_BUFFERING				
-				lea		ScreenBase,a0
+				lea		ScreenBase(pc),a0
 				move.l	(a0),d0
 				cmp.l	#$20000,d0
 				beq.s	.swapscreen1
@@ -79,7 +81,7 @@ MainLoop:
 			endif
 
 				bsr 	ReadControl01
-				lea     NbLoop,a0
+				lea     NbLoop(pc),a0
 				btst.l	#4,d0
 				beq		NoSpace
 				;DBGLOG	<toto la vie est belle>
@@ -94,10 +96,10 @@ NoSpace:
 				; Add here targeted clear
 			endif
 			
-			; PlotPixel test
+; Sample PlotPixel
 			if 1
 			rept 1
-				lea		ScreenBase,a0
+				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				move.w	#64,d0
 				move.w	#128,d1
@@ -123,17 +125,30 @@ NoSpace:
 			endr
 			endif
 
+; Sample affichage 16x16 shifted.
+			if 0
 				lea		ScreenBase,a0
 				move.l	(a0),a0
 				lea		SpriteBubbles,a1
-				move.l	#64,d0
+				move.l	#65,d0
 				add.l	d6,d0
 				move.l	#64,d1
 				bsr		DisplaySprite16x16MaskedShifted
+			endif
 
+; Sample affichage image full screen.
+			if 0
+				lea		ScreenBase,a1
+				move.l	(a1),a1
+				lea		SpriteFullScreen(pc),a0
+				move.l	#256*256/4,d7
+.loopsprFS:
+				move.l	(a0)+,(a1)+
+				dbf	d7,.loopsprFS
+			endif
 			
 				;DisplayOffForProfiling
-			; Sprite display test
+; Sample affichage 8x8 font.
 			if 0
 				lea		ScreenBase,a3
 				move.l	(a3),a3
@@ -141,22 +156,11 @@ NoSpace:
 				move.l	d6,d5
 				move.l	#31,d7
 .loopfont
-				;lea		Sprite,a1
-				;move.l	#16,d0
-				;move.l	#16,d1
-				;move.l	a3,a0
-				;bsr		DisplaySprite8x8MaskedShifted
-
-
 				move.l	d5,d0
 				add.l	#1,d5
 				move.l	d4,d1
 				sub.l	#8,d4
 				move.l	a3,a0
-				;move.b	$18020,d2     ; lire le statut du zx8302
-				;beq.s	.nothing
-				;lea		4*8(a1),a1
-.nothing:
 				move.l	d0,d3
 				sub.l	#2,d0
 				move.l	d1,d6
@@ -179,8 +183,15 @@ NoSpace:
                 movem.l (sp)+,d0-d7/a0-a6
                 rts
 
+;=============================================================================
 	include "controls.asm"
+;=============================================================================
 
+
+;=============================================================================
+; Sound TEST
+;=============================================================================
+; Note : From sample from https://www.chibiakumas.com/68000/sinclairql.php
 
 				lea		SoundCommand,a3   ; These three lines
 				move.b	#$11,d0    ; Stop the note
@@ -216,6 +227,7 @@ SoundCommand:
 ;	- optimiser en enlevant le lea en trop en fin de rept
 ;=============================================================================
 DisplaySprite16x16MaskedShifted:
+				;DBGBREAK
 				move.l	d0,d3
 				lsr.l	#2,d0			; /4, 4 pixels per word.
 				lsl.l	#1,d0			; *2
@@ -225,13 +237,18 @@ DisplaySprite16x16MaskedShifted:
 						
 				and.l	#3,d3			; keep 2 bits for shifting (0-3)
 				move.l	d3,d2		
+				move.l	d3,d1
+				lsl.l	#2,d3			; *4
 				lsl.l	#8,d3			; *256
+				lsl.l	#1,d1			; *2
+				lsl.l	#8,d1			; *256
 				lsl.l	#6,d2			; *64
-				add.l	d3,d2			; *320
+				add.l	d3,d2			;
+				add.l	d1,d2			; *1600
 
 				add.l	d2,a1			; a1 = sprite
 				move.l	a1,a2
-				lea		160(a2),a2		; a2 = mask
+				lea		160*5(a2),a2		; a2 = mask
 		rept 16	; lines
 	if 1 ; 1 = Mask on
 			rept 5 ; words
@@ -557,7 +574,7 @@ PlotPixelWhite:
 ; =============================================================================
 ClearScreen:
                 movem.l d0-d1/a0,-(sp)
-                lea     ScreenBase,a0
+                lea     ScreenBase(pc),a0
 				move.l	(a0),a0
                 move.w  #255,d0	; 256 lines
                 move.l   #CLEAR_SCREEN_COLOR,d1
@@ -583,7 +600,7 @@ GetSinCos:
                 ; Extraction du Sinus
                 move.w  d0,d1
                 add.w   d1,d1           ; d1 * 2 pour indexation sur mots (16-bit)
-                lea     SinTable,a1
+                lea     SinTable(pc),a1
                 move.w  (a1,d1.w),d1    ; d1 = Sin(Angle)
 
                 ; Extraction du Cosinus
@@ -622,4 +639,9 @@ SinTable:
 				even
 				dcb.b	2048,0
 TopOfStack:
+				even
+SpriteFullScreen:	incbin		"Data\256x256.bin"
+				even
+				
+				
                 end
