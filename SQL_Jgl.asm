@@ -126,7 +126,7 @@ NoSpace:
 			endif
 
 ; Sample affichage 16x16 shifted.
-			if 0
+			if 1
 				lea		ScreenBase,a0
 				move.l	(a0),a0
 				lea		SpriteBubbles,a1
@@ -147,34 +147,12 @@ NoSpace:
 				dbf	d7,.loopsprFS
 			endif
 			
-				;DisplayOffForProfiling
 ; Sample affichage 8x8 font.
-			if 0
-				lea		ScreenBase,a3
-				move.l	(a3),a3
-				move.l	#256-8,d4
-				move.l	d6,d5
-				move.l	#31,d7
-.loopfont
-				move.l	d5,d0
-				add.l	#1,d5
-				move.l	d4,d1
-				sub.l	#8,d4
-				move.l	a3,a0
-				move.l	d0,d3
-				sub.l	#2,d0
-				move.l	d1,d6
-				bsr		ClearSprite8x8
-
-				lea		Font+4*8*16,a1
-				move.l	d3,d0
-				move.l	d6,d1
-				move.l	a3,a0
-				bsr		DisplaySprite8x8
-				
-				dbf		d7,.loopfont
-			endif
-				
+				move.l	#0,d0
+				move.l	#0,d1
+				lea		TextToDisplay(pc),a0
+				bsr		DisplayText
+			
 			ifd TIMER_MODE
 				DisplayOffForProfiling
 			endif
@@ -186,6 +164,47 @@ NoSpace:
 ;=============================================================================
 	include "controls.asm"
 ;=============================================================================
+
+;=============================================================================
+; DisplayText - !! no shifting, no mask, no clipping !!
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = text address
+; Output : -
+; Destroy :
+;		d0, d1, d2, d3
+;		a0, a1, a2
+;
+; TODO : 
+;=============================================================================
+DisplayText:
+				move.l	a0,a6				; save text adr
+				move.l	d0,d5				; save coords
+				move.l	d1,d6
+.loop:
+				moveq	#0,d2
+				move.b	(a6)+,d2			; get char
+				beq.s	.endoftext
+				cmp.b	#32,d2
+				beq.s	.next				; space
+
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				lea		Font(pc),a1
+				sub.b	#33,d2				; sub first char (start with "!")
+				lsl.l	#5,d2
+				add.l	d2,a1
+				move.l	d5,d0
+				move.l	d6,d1
+				bsr		DisplaySprite8x8
+.next:
+				add.l	#8,d5				; next char 8 pixels to the right
+				
+				jmp		.loop
+
+.endoftext:
+				rts
 
 
 ;=============================================================================
@@ -329,15 +348,14 @@ DisplaySprite8x8MaskedShifted:
 ;		a1 = sprite base
 ; Output : -
 ; Destroy :
-;		d0, d1, d2, d3
-;		a0, a1, a2
+;		d0, d1
+;		a0
 ;
 ; TODO : 
 ;	- optimiser avec du .b (255 max pour les coord)
 ;	- optimiser en enlevant le lea en trop en fin de rept
 ;=============================================================================
 DisplaySprite8x8:
-				move.l	d0,d3
 				lsr.l	#2,d0			; /4, 4 pixels per word.
 				lsl.l	#1,d0			; *2
 				lsl.l	#7,d1			; y*128
@@ -615,16 +633,11 @@ GetSinCos:
 ; =============================================================================
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
-                even
-Sprite:			incbin		"Data\8x8MaskShift.bin"
-	even
-SpriteBubbles:	incbin		"Data\Bubbles16x16x5.bin"
-	even
-Font:			incbin 		"Data\Font8x8.bin"				
 	even
 ScreenBase:		dc.l	$20000          ; Adresse de départ de la mémoire d'écran QL
-PlotPixelAdr:	dc.l	0
 NbLoop:			dc.l	0
+
+TextToDisplay:	dc.b	"   SCORE : 0000      LIFE : 5",0
 
 SinTable:
                 dc.w    0, 25, 50, 74, 98, 120, 142, 162
@@ -635,8 +648,15 @@ SinTable:
                 dc.w    -181, -198, -213, -226, -236, -244, -250, -254
                 dc.w    -256, -254, -250, -244, -236, -226, -213, -198
                 dc.w    -181, -162, -142, -120, -98, -74, -50, -25
-
 				even
+
+Sprite:			incbin		"Data\8x8MaskShift.bin"
+	even
+SpriteBubbles:	incbin		"Data\Bubbles16x16x5.bin"
+	even
+Font:			incbin 		"Data\Font8x8.bin"				
+	even
+
 				dcb.b	2048,0
 TopOfStack:
 				even
