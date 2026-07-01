@@ -41,8 +41,6 @@ Start:
 				DBGENABLE
 				;DBGBREAK
 
-				lea		SpriteFullScreen(pc),a0
-
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
 			ifd DOUBLE_BUFFERING				
@@ -146,10 +144,19 @@ NoSpace:
 				move.l	(a0)+,(a1)+
 				dbf	d7,.loopsprFS
 			endif
+
+; Sample affichage image full screen compréssée.
+			if 1
+				lea		SpriteFullScreenComp(pc),a0
+				lea		ScreenBase,a1
+				move.l	(a1),a1
+				bsr		zx0_decompress
+			endif
+				
 			
 ; Sample affichage 8x8 font.
 				move.l	#0,d0
-				move.l	#0,d1
+				move.l	#256-8,d1
 				lea		TextToDisplay(pc),a0
 				bsr		DisplayText
 			
@@ -164,6 +171,9 @@ NoSpace:
 ;=============================================================================
 	include "controls.asm"
 ;=============================================================================
+;=============================================================================
+	include "unzx0_68000.asm"
+;=============================================================================
 
 ;=============================================================================
 ; DisplayText - !! no shifting, no mask, no clipping !!
@@ -173,8 +183,8 @@ NoSpace:
 ;		a0 = text address
 ; Output : -
 ; Destroy :
-;		d0, d1, d2, d3
-;		a0, a1, a2
+;		d0, d1, d2, d5, d6
+;		a0, a1
 ;
 ; TODO : 
 ;=============================================================================
@@ -193,7 +203,7 @@ DisplayText:
 				move.l	(a0),a0
 				lea		Font(pc),a1
 				sub.b	#33,d2				; sub first char (start with "!")
-				lsl.l	#5,d2
+				lsl.l	#5,d2				; *32 : 4 bytes (2 words for 8 pixels) * 8 lines
 				add.l	d2,a1
 				move.l	d5,d0
 				move.l	d6,d1
@@ -660,7 +670,14 @@ Font:			incbin 		"Data\Font8x8.bin"
 				dcb.b	2048,0
 TopOfStack:
 				even
-SpriteFullScreen:	incbin		"Data\256x256.bin"
+
+SpriteFullScreenComp:
+	;include "bitmap.asm"
+	incbin		"Data\logo.bin.zx0"
+
+SpriteFullScreen:
+	;include "bitmap.asm"
+	incbin		"Data\logo.bin"
 				even
 				
 				
