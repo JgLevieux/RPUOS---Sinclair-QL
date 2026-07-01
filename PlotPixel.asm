@@ -1,0 +1,122 @@
+; =============================================================================
+; PlotPixel 8 colors mode
+; Input :
+; 		d0 = X (0-255)
+;		d1 = Y (0-255)
+;		d2 = Color
+;		a4 = ScreenBase
+; Output : -
+; Destroy : 
+;		d0, d1, d2, d3
+;		a0
+; =============================================================================
+PlotPixel:
+				move.l	a4,a0
+				
+                move.w  d2,d3               ; d3 = Couleur (0-7)
+                
+                ; --- Calcul de l'adresse du mot horizontal (X) ---
+                move.w  d0,d2               ; d2 = Copie de X
+                lsr.w   #1,d2               ; d2 = X / 2
+                andi.w  #$007E,d2           ; Force l'alignement sur un mot pair
+                adda.w  d2,a0               ; a0 pointe sur le bon mot horizontal
+                
+                ; --- Calcul de l'adresse de la ligne verticale (Y) ---
+                move.w  d1,d2               ; d2 = Copie de Y
+                lsl.w   #7,d2               ; d2 = Y * 128 octets par ligne
+                adda.w  d2,a0               ; a0 = Adresse mémoire finale du mot cible
+                
+                ; --- Préparation des masques de couleur ---
+                lsl.w   #6,d3
+                move.w  d3,d2
+                lsl.w   #7,d2
+                andi.w  #$8000,d2           ; Isole le bit Vert (Bit 15)
+                andi.w  #$00C0,d3           ; Isole les bits Rouge et Bleu (Bits 7 et 6)
+                or.w    d2,d3               ; d3 = Pixel brut configuré pour la position 0
+                
+                ; --- Positionnement intra-mot (Pixel 0, 1, 2 ou 3) ---
+                andi.w  #3,d0               ; d0 = X modulo 4
+                add.w   d0,d0               ; d0 = Facteur de rotation (0, 2, 4 ou 6 bits)
+                
+                ; --- Application directe avec correction du masque ---
+                move.w  #$3F3F,d2           ; Correction : Nettoie TOUS les bits du pixel (y compris le Flash)
+                ror.w   d0,d3               ; Décale les bits de couleur à la bonne position
+                ror.w   d0,d2               ; Décale le masque de nettoyage à la bonne position
+                
+                and.w   d2,(a0)             ; Effacement chirurgical de l'ancien pixel
+                or.w    d3,(a0)             ; Injection de la nouvelle couleur
+                rts
+
+;=============================================================================
+; PlotPixel fixed color (assumes coordinates are 0-255)
+; Input :
+; 		d0.w = X (0-255)
+;		d1.w = Y (0-255)
+;		a0 = ScreenBase
+; Output : -
+; Destroy : 
+;		d2, d3
+;		a1
+;
+; Bits configuration for 4 pixels on 2 word
+; G0 F0 G1 F1 G2 F2 G3 F3
+; R0 B0 R1 B1 R2 B2 R3 B3
+;=============================================================================
+		macro PlotPixelStart
+			; Compute screen adress
+				move.l  a0,a1
+                move.w  d0,d2
+                lsr.w   #2,d2
+                lsl.w	#1,d2			; /4, 4 pixels per word. (faster than lsr 1 with and on the emulator)
+                adda.w  d2,a1			; +x screen
+                move.w  d1,d2
+                lsl.w   #7,d2			; y*128
+                adda.w  d2,a1			; +y screen
+				
+			; Clean pixel bits
+                move.w  d0,d2
+                andi.w  #3,d2
+                add.w   d2,d2			; *2 lower 2 bits (2, 4, 6 or 8) for rotation -> for pixel X
+
+                move.w  #$3F3F,d3
+                ror.w   d2,d3
+                and.w   d3,(a1)			; clear pixel X
+		endm
+
+		macro PlotPixelColor
+                move.w  \1,d3
+                ror.w   d2,d3
+                or.w    d3,(a1)			; set bits for the color
+		endm
+		
+PlotPixelBlack:
+                PlotPixelStart
+                rts
+PlotPixelBlue:
+                PlotPixelStart
+				PlotPixelColor <#$0040>
+                rts
+PlotPixelRed:
+                PlotPixelStart
+                PlotPixelColor <#$0080>
+                rts
+PlotPixelMagenta:
+                PlotPixelStart
+				PlotPixelColor <#$00C0>
+				rts
+PlotPixelGreen:
+                PlotPixelStart
+				PlotPixelColor <#$8000>
+                rts
+PlotPixelCyan:
+                PlotPixelStart
+				PlotPixelColor <#$8040>
+                rts
+PlotPixelYellow:
+                PlotPixelStart
+				PlotPixelColor <#$8080>
+                rts
+PlotPixelWhite:
+                PlotPixelStart
+				PlotPixelColor <#$80C0>
+                rts
