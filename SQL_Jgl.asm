@@ -196,7 +196,7 @@ MainLoop:
 				bsr		DrawLine
 			endif
 
-				;&bsr		ClearScreen
+				;bsr		ClearScreen
 				bsr		MovePlayer
 				bsr		MoveQLix
 			
@@ -231,103 +231,100 @@ PlayerCoord:	dc.l	0,0
 ; Move Player
 ;=============================================================================
 MovePlayer:
-				lea		PlayerCoord(pc),a0
-				
-				lea		Keyboard01(pc),a1
-				move.b	(a1),d2
-				btst	#Keybord01_Right,d2
-				beq.s	.noright
-				add.l	#1,(a0)
-.noright:
-				btst	#Keybord01_Left,d2
-				beq.s	.noleft
-				sub.l	#1,(a0)
-.noleft:
-				btst	#Keybord01_Up,d2
-				beq.s	.noup
-				sub.l	#1,4(a0)
-.noup:
-				btst	#Keybord01_Down,d2
-				beq.s	.nodown
-				add.l	#1,4(a0)
-.nodown:
+				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
 
-				move.l	(a0),d0
-				move.l	4(a0),d1
-
+; Erase previous player
+; TODO - erase with position on frame n-2
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
-				bsr		PlotPixelRed
+				lea		QLixBackground(pc),a1
+				move.l	(a3),d0
+				sub.l	#3,d0
+				move.l	4(a3),d1
+				sub.l	#3,d1
+				bsr 	CleanSprite8x8Shifted
+
+; Keyboard & collisions
+				lea		Keyboard01(pc),a1
+				move.b	(a1),d4					; d4 = bits clavier
+				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
+				moveq	#0,d3
 
 ; Can go Left ?
-				lea		QLixBackground(pc),a4
-				lea		PlayerCoord(pc),a3
-
+				btst	#Keybord01_Left,d4
+				beq.s	.noleft
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				sub.l	#1,d0
 				bsr		GetPixel
 			
 				cmp.w	#ColorPixelWhite,d2
-				bne.s	.cantgoleft
-				move.l	#0,d0
-				move.l	#0,d1
-				lea		TextLeft(pc),a0
-				bsr		DisplayText
-.cantgoleft:
+				bne.s	.noleft
+				sub.l	#1,(a3)
+.noleft:
 
 ; Can go Right ?
-				lea		QLixBackground(pc),a4
-				lea		PlayerCoord(pc),a3
-
+				btst	#Keybord01_Right,d4
+				beq.s	.noright
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				add.l	#1,d0
 				bsr		GetPixel
-			
+
 				cmp.w	#ColorPixelWhite,d2
-				bne.s	.cantgoright
-				move.l	#64,d0
-				move.l	#0,d1
-				lea		TextRight(pc),a0
-				bsr		DisplayText
-.cantgoright:
+				bne.s	.noright
+				add.l	#1,(a3)
+.noright:
 
 ; Can go Up ?
-				lea		QLixBackground(pc),a4
-				lea		PlayerCoord(pc),a3
-
+				btst	#Keybord01_Up,d4
+				beq.s	.noup
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				sub.l	#1,d1
 				bsr		GetPixel
-			
+
+				btst	#Keybord01_Space,d4
+				beq.s	.nospaceup
+				tst.w	d2						; Black pixel up ?
+				bne.s	.noup
+				sub.l	#1,4(a3)
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				bsr		PlotPixelWhite
+
+.nospaceup:
 				cmp.w	#ColorPixelWhite,d2
-				bne.s	.cantgoup
-				move.l	#128,d0
-				move.l	#0,d1
-				lea		TextUp(pc),a0
-				bsr		DisplayText
-.cantgoup:
+				bne.s	.noup
+				sub.l	#1,4(a3)
+.noup:
 
 ; Can go down ?
-				lea		QLixBackground(pc),a4
-				lea		PlayerCoord(pc),a3
-
+				btst	#Keybord01_Down,d4
+				beq.s	.nodown
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				add.l	#1,d1
 				bsr		GetPixel
-			
+
 				cmp.w	#ColorPixelWhite,d2
-				bne.s	.cantgodown
-				move.l	#192,d0
-				move.l	#0,d1
-				lea		TextDown(pc),a0
-				bsr		DisplayText
-.cantgodown:
+				bne.s	.nodown
+				add.l	#1,4(a3)
+.nodown:
+
+; Draw player
+				lea		ScreenBase,a0
+				move.l	(a0),a0
+				lea		SpritePlayer,a1
+				move.l	(a3),d0
+				sub.l	#3,d0
+				move.l	4(a3),d1
+				sub.l	#3,d1
+				bsr		DisplaySprite8x8MaskedShifted
+
 				rts
-	
+
+				
 ;=============================================================================
 ; Move QLix
 ;=============================================================================
@@ -655,6 +652,41 @@ DisplaySprite8x8MaskedShifted:
 				lea		122(a0),a0
 		endr
 				rts
+				
+;=============================================================================
+; Clean a sprite, 8x8 with shifting, !!! no clipping !!!
+; Get "originals" pixels into the Qlix background
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = screen to copy
+; Output : -
+; Destroy :
+;		d0, d1
+;		a0, a1
+;
+; TODO : 
+;	- optimiser avec du .b/.w (255 max pour les coord)
+;	- optimiser en enlevant le lea en trop en fin de rept
+;=============================================================================
+CleanSprite8x8Shifted:
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				lsl.l	#1,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d0,d1			; +y screen +x screen
+				add.l	d1,a0			; dest adr
+				add.l	d1,a1			; source adr
+						
+		rept 8	; lines
+			rept 3 ; words
+				move.w	(a1)+,(a0)+
+			endr
+				lea		122(a0),a0
+				lea		122(a1),a1
+		endr
+				rts
+
 ;=============================================================================
 ; Display a sprite, 8x8 no mask, no shifting, !!! no clipping !!!
 ; Input : -
@@ -885,9 +917,7 @@ SinTable:
                 dc.w    -92, -86, -80, -74, -68, -62, -56, -50, -44, -37, -31, -25, -19, -13, -6, 0
 	even
 
-Sprite:			incbin		"Data\8x8MaskShift.bin"
-	even
-SpriteBubbles:	incbin		"Data\Bubbles16x16x5.bin"
+SpritePlayer:	incbin		"Data\QLixPlayer.bin"
 	even
 Font:			incbin 		"Data\Font8x8.bin"				
 	even

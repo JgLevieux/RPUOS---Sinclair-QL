@@ -105,7 +105,7 @@ GetPixel:
 ; Input :
 ; 		d0.w = X (0-255)
 ;		d1.w = Y (0-255)
-;		a0 = ScreenBase
+;		a4 = ScreenBase
 ; Output : -
 ; Destroy : 
 ;		d2, d3
@@ -117,7 +117,7 @@ GetPixel:
 ;=============================================================================
 		macro PlotPixelStart
 			; Compute screen adress
-				move.l  a0,a1
+				move.l  a4,a1
                 move.w  d0,d2
                 lsr.w   #2,d2
                 lsl.w	#1,d2			; /4, 4 pixels per word. (faster than lsr 1 with and on the emulator)
