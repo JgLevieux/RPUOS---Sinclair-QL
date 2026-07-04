@@ -23,6 +23,7 @@ CLEAR_SCREEN_COLOR	equ		0
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
+ColorPixelBlack		equ		$0000
 ColorPixelWhite		equ		$80C0
 ColorPixelRed		equ		$0080
 ColorPixelMagenta	equ		$00C0
@@ -61,6 +62,8 @@ Start:
 				lea		ScreenBase(pc),a0
 				move.l	#$20000,(a0)
 				bsr     ClearScreen
+
+				bsr		SetupQLixBackground
 
 			ifd DOUBLE_BUFFERING				
 				move.l	#$28000,(a0)					; Init draw in screen 2 to swap directly to 1
@@ -173,7 +176,7 @@ NoSpace:
 				bsr		DisplayText
 			endif
 			
-			if 1
+			if 0
 				move.l	#0,d0
 				move.l	#0,d1
 				move.l	#16,d4
@@ -200,13 +203,14 @@ NoSpace:
 				move.l	#ColorPixelMagenta,d6
 				bsr		DrawLine
 			endif
+
+				bsr		MoveQLix
 			
 			ifd TIMER_MODE
 				DisplayOffForProfiling
 			endif
 				jmp		MainLoop
 
-                movem.l (sp)+,d0-d7/a0-a6
                 rts
 
 ;=============================================================================
@@ -215,6 +219,161 @@ NoSpace:
 	include "PlotPixel.asm"
 	include "Lines.asm"
 ;=============================================================================
+
+	even
+QLixCoord:		dc.l	192*256,192*256
+	even
+QLixRotation:	dc.w	128
+	even
+QLixDir:		dc.w	0,64
+	even
+
+;=============================================================================
+; Move QLix
+;=============================================================================
+MoveQLix:
+                movem.l d0-d7/a0-a6,-(sp)
+	;DBGBREAK
+	if 0
+; Move the QLix
+				lea		NbFrameLastCollide(pc),a3
+				move.w	(a3),d6
+				lea		QLixCoord(pc),a4
+				lea		QLixDirX(pc),a5
+				tst.w	d6
+				bne.s	.nodiraddx					; No add (do not change direction) if colliding recently
+				add.w	#1,(a5)
+.nodiraddx:
+				move.w	(a5),d0
+				bsr		GetSinCos
+				muls	#2,d2
+				;ext.l	d2
+				asr.l	#8,d2
+				add.w	d2,(a4)
+
+				lea		QLixDirY(pc),a5
+				tst.w	d6
+				bne.s	.nodiraddy					; No add (do not change direction) if colliding recently
+				add.w	#2,(a5)
+.nodiraddy:
+				move.w	(a5),d0
+				bsr		GetSinCos
+				;ext.l	d2
+				muls	#2,d2
+				asr.l	#8,d2
+				add.w	d2,2(a4)
+	else
+				lea		QLixCoord(pc),a4
+				lea		QLixDir(pc),a5
+				lea		SinTable(pc),a0
+
+				lea		NbFrameLastCollide(pc),a3
+				move.w	(a3),d6
+				
+				tst.w	d6
+				bne.s	.nodiraddx					; No add (do not change direction) if colliding recently
+				add.w	#1,(a5)
+.nodiraddx:
+				move.w	(a5),d0
+				and.w	#$FF,d0
+				add.w	d0,d0
+				move.w	(a0,d0.w),d1
+				ext.l	d1
+				;asr.l	#1,d1
+				muls	#2,d1
+				add.l	d1,(a4)
+
+				tst.w	d6
+				bne.s	.nodiraddy					; No add (do not change direction) if colliding recently
+				add.w	#2,2(a5)
+.nodiraddy:
+				move.w	2(a5),d0
+				and.w	#$FF,d0
+				add.w	d0,d0
+				move.w	(a0,d0.w),d1
+				ext.l	d1
+				;asr.l	#1,d1
+				muls	#2,d1
+				add.l	d1,4(a4)
+				
+				
+	endif
+; Draw the QLix
+				moveq	#0,d2
+				moveq	#0,d3
+
+			; Apply the rotation to compute X and Y for both coord of the line.
+				lea		QLixRotation(pc),a5
+				add.w	#1,(a5)
+				move.w	(a5),d0
+				bsr		GetSinCos
+				ext.l	d2
+				ext.l	d3
+				asr.l	#5,d2
+				asr.l	#5,d3
+				
+			; Compute line coords
+				lea		QLixCoord(pc),a4
+				move.l	(a4),d0
+				asr.l   #8,d0
+				move.l	4(a4),d1
+				asr.l   #8,d1
+
+				move.w	d0,d4
+				move.w	d1,d5
+				
+				add.w	d2,d0
+				add.w	d3,d1
+				sub.w	d2,d4
+				sub.w	d3,d5
+
+			; Draw.
+				move.l	#ColorPixelWhite,d6
+				bsr		DrawLineQLix
+				
+				lea		NbFrameLastCollide(pc),a3
+				cmp.w	#0,a6
+				beq.s	.nocollide
+
+				move.w	(a3),d0
+				bne.s	.notfirstcollide
+;				DBGBREAK
+				lea		QLixDir(pc),a5
+				add.w	#128,(a5)
+				add.w	#128,2(a5)
+
+				move.w	#20,(a3)				; 5 frames moving to the oposite direction.
+.notfirstcollide:
+.nocollide:
+				move.w	(a3),d0
+				beq.s	.endcollide
+				sub.w	#1,(a3)
+.endcollide:
+                movem.l (sp)+,d0-d7/a0-a6
+				rts
+
+NbFrameLastCollide: dc.w 0
+
+;=============================================================================
+; SetupQLix background
+;=============================================================================
+SetupQLixBackground:
+                movem.l d0-d7/a0-a6,-(sp)
+				
+				lea		QLixBackgroundCompressed(pc),a0
+				lea		$20000,a1
+				bsr		zx0_decompress
+
+				lea		QLixBackgroundCompressed(pc),a0
+				lea		$28000,a1
+				bsr		zx0_decompress
+
+				lea		QLixBackgroundCompressed(pc),a0
+				lea		QLixBackground(pc),a1
+				bsr		zx0_decompress
+
+                movem.l (sp)+,d0-d7/a0-a6
+				rts
 
 ;=============================================================================
 ; DisplayText - !! no shifting, no mask, no clipping !!
@@ -532,51 +691,83 @@ ClearScreen:
                 dbf     d0,.loop
                 movem.l (sp)+,d0-d1/a0
                 rts
+
+
+			if 0
+				lea     ScreenBase(pc),a0
+				move.l  (a0),a0
+				lea     QLixBackground(pc),a1
+
+				move.w  #255,d0         ; 256 lignes
+.loop:
+				; 1ère passe : 12 registres (48 octets)
+				movem.l (a1)+,d1-d7/a2-a6
+				movem.l d1-d7/a2-a6,(a0)
+
+				; 2ème passe : 12 registres (48 octets) - offset de 48
+				movem.l (a1)+,d1-d7/a2-a6
+				movem.l d1-d7/a2-a6,48(a0)
+
+				; 3ème passe : 8 registres (32 octets) - offset de 96 (48+48)
+				movem.l (a1)+,d1-d7/a2
+				movem.l d1-d7/a2,96(a0)
+				
+				; Avancer manuellement le pointeur d'écran de 128 octets
+				lea     128(a0),a0
+
+				dbf     d0,.loop			
+			endif
 				
 ; =============================================================================
-;  Obtention Sinus / Cosinus (64 étapes pour 360°)
-; =============================================================================
-;  Entrée : d0 = Angle (0-63)
-;  Sorties : d1 = Valeur de Sinus (format signé 8.8), d2 = Cosinus (format signé 8.8)
-;  La table ne contient que le sinus. Le cosinus est calculé par décalage de phase :
-;  Cos(x) = Sin(x + 90°) -> Dans notre cercle à 64 étapes, 90° correspond à 16 étapes.
+;  Obtention Sinus / Cosinus
+;  Entrée : d0 = Angle (0-255)
+;  Sorties : d2 = Sinus, d3 = Cosinus
 ; =============================================================================
 GetSinCos:
-                andi.w  #63,d0          ; Écrêtage de sécurité de l'angle d'entrée
+                andi.w  #255,d0          	; Écrêtage de sécurité de l'angle d'entrée
 
                 ; Extraction du Sinus
-                move.w  d0,d1
-                add.w   d1,d1           ; d1 * 2 pour indexation sur mots (16-bit)
+                move.w  d0,d2
+                add.w   d2,d2           	; d2 * 2 pour indexation sur mots (16-bit)
                 lea     SinTable(pc),a1
-                move.w  (a1,d1.w),d1    ; d1 = Sin(Angle)
+                move.w  (a1,d2.w),d2    	; d2 = Sin(Angle)
 
                 ; Extraction du Cosinus
-                move.w  d0,d2
-                addi.w  #16,d2          ; Ajout du quart de période (90° / 16 étapes)
-                andi.w  #63,d2          ; Écrêtage
-                add.w   d2,d2
-                move.w  (a1,d2.w),d2    ; d2 = Cos(Angle)
+                move.w  d0,d3
+                addi.w  #64,d3				; Ajout du quart de période
+                andi.w  #255,d3          	; Écrêtage
+                add.w   d3,d3
+                move.w  (a1,d3.w),d3    	; d2 = Cos(Angle)
 
                 rts
 				
 ; =============================================================================
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
-	even
+				even
 ScreenBase:		dc.l	$20000          ; Adresse de départ de la mémoire d'écran QL
 NbLoop:			dc.l	0
 
 TextToDisplay:	dc.b	"   SCORE : 0000      LIFE : 5",0
+				even
 
 SinTable:
-                dc.w    0, 25, 50, 74, 98, 120, 142, 162
-                dc.w    181, 198, 213, 226, 236, 244, 250, 254
-                dc.w    256, 254, 250, 244, 236, 226, 213, 198
-                dc.w    181, 162, 142, 120, 98, 74, 50, 25
-                dc.w    0, -25, -50, -74, -98, -120, -142, -162
-                dc.w    -181, -198, -213, -226, -236, -244, -250, -254
-                dc.w    -256, -254, -250, -244, -236, -226, -213, -198
-                dc.w    -181, -162, -142, -120, -98, -74, -50, -25
+                dc.w    0, 6, 13, 19, 25, 31, 37, 44, 50, 56, 62, 68, 74, 80, 86, 92
+                dc.w    98, 103, 109, 115, 120, 126, 131, 136, 142, 147, 152, 157, 162, 167, 171, 176
+                dc.w    180, 185, 189, 193, 197, 201, 205, 208, 212, 215, 219, 222, 225, 228, 231, 233
+                dc.w    236, 238, 241, 243, 245, 247, 248, 250, 251, 253, 254, 254, 255, 255, 255, 255
+                dc.w    255, 255, 255, 255, 254, 254, 253, 251, 250, 248, 247, 245, 243, 241, 238, 236
+                dc.w    233, 231, 228, 225, 222, 219, 215, 212, 208, 205, 201, 197, 193, 189, 185, 180
+                dc.w    176, 171, 167, 162, 157, 152, 147, 142, 136, 131, 126, 120, 115, 109, 103, 98
+                dc.w    92, 86, 80, 74, 68, 62, 56, 50, 44, 37, 31, 25, 19, 13, 6, 0
+                dc.w    0, -6, -13, -19, -25, -31, -37, -44, -50, -56, -62, -68, -74, -80, -86, -92
+                dc.w    -98, -103, -109, -115, -120, -126, -131, -136, -142, -147, -152, -157, -162, -167, -171, -176
+                dc.w    -180, -185, -189, -193, -197, -201, -205, -208, -212, -215, -219, -222, -225, -228, -231, -233
+                dc.w    -236, -238, -241, -243, -245, -247, -248, -250, -251, -253, -254, -254, -255, -255, -255, -255
+                dc.w    -255, -255, -255, -255, -254, -254, -253, -251, -250, -248, -247, -245, -243, -241, -238, -236
+                dc.w    -233, -231, -228, -225, -222, -219, -215, -212, -208, -205, -201, -197, -193, -189, -185, -180
+                dc.w    -176, -171, -167, -162, -157, -152, -147, -142, -136, -131, -126, -120, -115, -109, -103, -98
+                dc.w    -92, -86, -80, -74, -68, -62, -56, -50, -44, -37, -31, -25, -19, -13, -6, 0
 				even
 
 Sprite:			incbin		"Data\8x8MaskShift.bin"
@@ -590,14 +781,10 @@ Font:			incbin 		"Data\Font8x8.bin"
 TopOfStack:
 				even
 
-SpriteFullScreenComp:
-	;include "bitmap.asm"
-	incbin		"Data\logo.bin.zx0"
+QLixBackgroundCompressed:
+	incbin		"Data\QLixBackground.bin.zx0"
+	even
 
-SpriteFullScreen:
-	;include "bitmap.asm"
-	incbin		"Data\logo.bin"
-				even
-				
-				
+QLixBackground:
+				dcb.b	32*1024,0
                 end
