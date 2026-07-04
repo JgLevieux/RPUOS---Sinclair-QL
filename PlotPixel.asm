@@ -1,3 +1,14 @@
+ColorPixelBlack		equ		$0000
+ColorPixelWhite		equ		$80C0
+ColorPixelRed		equ		$0080
+ColorPixelMagenta	equ		$00C0
+ColorPixelGreen		equ		$8000
+ColorPixelCyan		equ		$8040
+ColorPixelYellow	equ		$8080
+ColorPixelBlue		equ		$0040
+
+; G0 F0 G1 F1 G2 F2 G3 F3
+; R0 B0 R1 B1 R2 B2 R3 B3
 ; =============================================================================
 ; PlotPixel 8 colors mode
 ; Input :
@@ -47,6 +58,48 @@ PlotPixel:
                 or.w    d3,(a0)             ; Injection de la nouvelle couleur
                 rts
 
+; =============================================================================
+; PlotPixel 8 colors mode
+; Input :
+; 		d0 = X (0-255)
+;		d1 = Y (0-255)
+;		a4 = ScreenBase
+; Output : -
+;		d2 = Color
+; Destroy : 
+;		d0, d1, d2
+;		a0
+; =============================================================================
+GetPixel:
+				move.l	a4,a0
+				
+                ; --- Calcul de l'adresse du mot horizontal (X) ---
+                move.w  d0,d2               ; d2 = Copie de X
+                lsr.w   #1,d2               ; d2 = X / 2
+                andi.w  #$007E,d2           ; Force l'alignement sur un mot pair
+                adda.w  d2,a0               ; a0 pointe sur le bon mot horizontal
+                
+                ; --- Calcul de l'adresse de la ligne verticale (Y) ---
+                move.w  d1,d2               ; d2 = Copie de Y
+                lsl.w   #7,d2               ; d2 = Y * 128 octets par ligne
+                adda.w  d2,a0               ; a0 = Adresse mémoire finale du mot cible
+                
+                ; --- Positionnement intra-mot (Pixel 0, 1, 2 ou 3) ---
+                andi.w  #3,d0               ; d0 = X modulo 4
+                add.w   d0,d0               ; d0 = Facteur de rotation (0, 2, 4 ou 6 bits)
+                
+                ; --- Application directe avec correction du masque ---
+                move.w  #$80C0,d1           ; On va garder que les bits du pixel
+                ror.w   d0,d1               ; Décale le masque à la bonne position
+
+				move.w	(a0),d2				; Lit les 4 pixels du mot
+				and.w	d1,d2				; On garde que les bits du pixel lu
+				rol.w	d0,d2				; Remet les bits au pixel 0
+                rts
+
+; G0 F0 G1 F1 G2 F2 G3 F3 / R0 B0 R1 B1 R2 B2 R3 B3
+
+				
 ;=============================================================================
 ; PlotPixel fixed color (assumes coordinates are 0-255)
 ; Input :
@@ -94,29 +147,29 @@ PlotPixelBlack:
                 rts
 PlotPixelBlue:
                 PlotPixelStart
-				PlotPixelColor <#$0040>
+				PlotPixelColor <#ColorPixelBlue>
                 rts
 PlotPixelRed:
                 PlotPixelStart
-                PlotPixelColor <#$0080>
+                PlotPixelColor <#ColorPixelRed>
                 rts
 PlotPixelMagenta:
                 PlotPixelStart
-				PlotPixelColor <#$00C0>
+				PlotPixelColor <#ColorPixelMagenta>
 				rts
 PlotPixelGreen:
                 PlotPixelStart
-				PlotPixelColor <#$8000>
+				PlotPixelColor <#ColorPixelGreen>
                 rts
 PlotPixelCyan:
                 PlotPixelStart
-				PlotPixelColor <#$8040>
+				PlotPixelColor <#ColorPixelCyan>
                 rts
 PlotPixelYellow:
                 PlotPixelStart
-				PlotPixelColor <#$8080>
+				PlotPixelColor <#ColorPixelYellow>
                 rts
 PlotPixelWhite:
                 PlotPixelStart
-				PlotPixelColor <#$80C0>
+				PlotPixelColor <#ColorPixelWhite>
                 rts

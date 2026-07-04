@@ -23,14 +23,6 @@ CLEAR_SCREEN_COLOR	equ		0
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
-ColorPixelBlack		equ		$0000
-ColorPixelWhite		equ		$80C0
-ColorPixelRed		equ		$0080
-ColorPixelMagenta	equ		$00C0
-ColorPixelGreen		equ		$8000
-ColorPixelCyan		equ		$8040
-ColorPixelYellow	equ		$8080
-ColorPixelBlue		equ		$0040
 
 ; =============================================================================
 
@@ -63,7 +55,7 @@ Start:
 				move.l	#$20000,(a0)
 				bsr     ClearScreen
 
-				bsr		SetupQLixBackground
+				bsr		ResetQLix
 
 			ifd DOUBLE_BUFFERING				
 				move.l	#$28000,(a0)					; Init draw in screen 2 to swap directly to 1
@@ -76,27 +68,27 @@ MainLoop:
 			; Double buffering
 			ifd DOUBLE_BUFFERING				
 				lea		ScreenBase(pc),a0
+				lea		BufferNum(pc),a1
 				move.l	(a0),d0
 				cmp.l	#$20000,d0
 				beq.s	.swapscreen1
 				
 				move.l	#$20000,(a0)					; Draw in screen 1
 				move.b	#ScreenMode02,$18063			; Display screen 2
+				move.w	#0,(a1)
 				
 				bra.s	.swapscreen2
 .swapscreen1:
 				move.l	#$28000,(a0)					; Draw in screen 2
 				move.b	#ScreenMode01,$18063			; Display screen 1
+				move.w	#1,(a1)
 .swapscreen2:
 			endif
 
 				bsr 	ReadControl01
+
 				lea     NbLoop(pc),a0
-				btst.l	#4,d0
-				beq		NoSpace
-				;DBGLOG	<toto la vie est belle>
 				add.l	#1,(a0)
-NoSpace:
 				move.l	(a0),d6
 
 			; Clear screen
@@ -204,6 +196,8 @@ NoSpace:
 				bsr		DrawLine
 			endif
 
+				;&bsr		ClearScreen
+				bsr		MovePlayer
 				bsr		MoveQLix
 			
 			ifd TIMER_MODE
@@ -228,41 +222,119 @@ QLixRotation:	dc.w	128
 QLixDir:		dc.w	0,64
 	even
 
+QLixPreviousLines:
+				dcb.w	2*2*2,0				; 2 coords (X,Y) * 2 points (for 1 lines) * 2 (frame n-1 & frame n-2)
+
+PlayerCoord:	dc.l	0,0				
+
+;=============================================================================
+; Move Player
+;=============================================================================
+MovePlayer:
+				lea		PlayerCoord(pc),a0
+				
+				lea		Keyboard01(pc),a1
+				move.b	(a1),d2
+				btst	#Keybord01_Right,d2
+				beq.s	.noright
+				add.l	#1,(a0)
+.noright:
+				btst	#Keybord01_Left,d2
+				beq.s	.noleft
+				sub.l	#1,(a0)
+.noleft:
+				btst	#Keybord01_Up,d2
+				beq.s	.noup
+				sub.l	#1,4(a0)
+.noup:
+				btst	#Keybord01_Down,d2
+				beq.s	.nodown
+				add.l	#1,4(a0)
+.nodown:
+
+				move.l	(a0),d0
+				move.l	4(a0),d1
+
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				bsr		PlotPixelRed
+
+; Can go Left ?
+				lea		QLixBackground(pc),a4
+				lea		PlayerCoord(pc),a3
+
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				sub.l	#1,d0
+				bsr		GetPixel
+			
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.cantgoleft
+				move.l	#0,d0
+				move.l	#0,d1
+				lea		TextLeft(pc),a0
+				bsr		DisplayText
+.cantgoleft:
+
+; Can go Right ?
+				lea		QLixBackground(pc),a4
+				lea		PlayerCoord(pc),a3
+
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				add.l	#1,d0
+				bsr		GetPixel
+			
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.cantgoright
+				move.l	#64,d0
+				move.l	#0,d1
+				lea		TextRight(pc),a0
+				bsr		DisplayText
+.cantgoright:
+
+; Can go Up ?
+				lea		QLixBackground(pc),a4
+				lea		PlayerCoord(pc),a3
+
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				sub.l	#1,d1
+				bsr		GetPixel
+			
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.cantgoup
+				move.l	#128,d0
+				move.l	#0,d1
+				lea		TextUp(pc),a0
+				bsr		DisplayText
+.cantgoup:
+
+; Can go down ?
+				lea		QLixBackground(pc),a4
+				lea		PlayerCoord(pc),a3
+
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				add.l	#1,d1
+				bsr		GetPixel
+			
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.cantgodown
+				move.l	#192,d0
+				move.l	#0,d1
+				lea		TextDown(pc),a0
+				bsr		DisplayText
+.cantgodown:
+				rts
+	
 ;=============================================================================
 ; Move QLix
 ;=============================================================================
 MoveQLix:
-                movem.l d0-d7/a0-a6,-(sp)
+                ;movem.l d0-d7/a0-a6,-(sp)
 	;DBGBREAK
-	if 0
-; Move the QLix
-				lea		NbFrameLastCollide(pc),a3
-				move.w	(a3),d6
-				lea		QLixCoord(pc),a4
-				lea		QLixDirX(pc),a5
-				tst.w	d6
-				bne.s	.nodiraddx					; No add (do not change direction) if colliding recently
-				add.w	#1,(a5)
-.nodiraddx:
-				move.w	(a5),d0
-				bsr		GetSinCos
-				muls	#2,d2
-				;ext.l	d2
-				asr.l	#8,d2
-				add.w	d2,(a4)
-
-				lea		QLixDirY(pc),a5
-				tst.w	d6
-				bne.s	.nodiraddy					; No add (do not change direction) if colliding recently
-				add.w	#2,(a5)
-.nodiraddy:
-				move.w	(a5),d0
-				bsr		GetSinCos
-				;ext.l	d2
-				muls	#2,d2
-				asr.l	#8,d2
-				add.w	d2,2(a4)
-	else
+; Move the QLix (24:8 format)
 				lea		QLixCoord(pc),a4
 				lea		QLixDir(pc),a5
 				lea		SinTable(pc),a0
@@ -280,7 +352,8 @@ MoveQLix:
 				move.w	(a0,d0.w),d1
 				ext.l	d1
 				;asr.l	#1,d1
-				muls	#2,d1
+				;muls	#2,d1
+				lsl.l	#1,d1
 				add.l	d1,(a4)
 
 				tst.w	d6
@@ -293,12 +366,23 @@ MoveQLix:
 				move.w	(a0,d0.w),d1
 				ext.l	d1
 				;asr.l	#1,d1
-				muls	#2,d1
+				;muls	#2,d1
+				lsl.l	#1,d1
 				add.l	d1,4(a4)
 				
-				
-	endif
 ; Draw the QLix
+			; Erase previous line.
+				lea		QLixPreviousLines(pc),a0
+				lea		BufferNum(pc),a1
+				move.w	(a1),d2
+				lsl.w	#3,d2
+				move.w	(a0,d2.w),d0
+				move.w	2(a0,d2.w),d1
+				move.w	4(a0,d2.w),d4
+				move.w	6(a0,d2.w),d5
+				move.l	#ColorPixelBlack,d6
+				bsr		DrawLineQLix
+
 				moveq	#0,d2
 				moveq	#0,d3
 
@@ -327,6 +411,16 @@ MoveQLix:
 				sub.w	d2,d4
 				sub.w	d3,d5
 
+			; Save line to be erased next time
+				lea		QLixPreviousLines(pc),a0
+				lea		BufferNum(pc),a1
+				move.w	(a1),d2
+				lsl.w	#3,d2						; Stock depends of the frame
+				move.w	d0,(a0,d2.w)
+				move.w	d1,2(a0,d2.w)
+				move.w	d4,4(a0,d2.w)
+				move.w	d5,6(a0,d2.w)
+
 			; Draw.
 				move.l	#ColorPixelWhite,d6
 				bsr		DrawLineQLix
@@ -349,17 +443,18 @@ MoveQLix:
 				beq.s	.endcollide
 				sub.w	#1,(a3)
 .endcollide:
-                movem.l (sp)+,d0-d7/a0-a6
+                ;movem.l (sp)+,d0-d7/a0-a6
 				rts
 
 NbFrameLastCollide: dc.w 0
 
 ;=============================================================================
-; SetupQLix background
+; ResetQLix
 ;=============================================================================
-SetupQLixBackground:
+ResetQLix:
                 movem.l d0-d7/a0-a6,-(sp)
 				
+; Init screen and background for collision
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		$20000,a1
 				bsr		zx0_decompress
@@ -372,6 +467,17 @@ SetupQLixBackground:
 				lea		QLixBackground(pc),a1
 				bsr		zx0_decompress
 
+; Init player vars
+				lea		PlayerCoord(pc),a0
+				move.l	#128,(a0)
+				move.l	#240,4(a0)
+
+; Init QLix vars:
+				lea		QLixCoord(pc),a0
+				move.l	#128*256,(a0)
+				move.l	#128*256,4(a0)			; 24:8 format (*256)
+
+				
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -746,10 +852,19 @@ GetSinCos:
 ; =============================================================================
 				even
 ScreenBase:		dc.l	$20000          ; Adresse de départ de la mémoire d'écran QL
+	even
+BufferNum:		dc.w	0
+	even
 NbLoop:			dc.l	0
-
-TextToDisplay:	dc.b	"   SCORE : 0000      LIFE : 5",0
-				even
+	even
+TextLeft:		dc.b	"LEFT",0
+	even
+TextRight:		dc.b	"RIGHT",0
+	even
+TextUp:			dc.b	"UP",0
+	even
+TextDown:		dc.b	"DOWN",0
+	even
 
 SinTable:
                 dc.w    0, 6, 13, 19, 25, 31, 37, 44, 50, 56, 62, 68, 74, 80, 86, 92
@@ -768,7 +883,7 @@ SinTable:
                 dc.w    -233, -231, -228, -225, -222, -219, -215, -212, -208, -205, -201, -197, -193, -189, -185, -180
                 dc.w    -176, -171, -167, -162, -157, -152, -147, -142, -136, -131, -126, -120, -115, -109, -103, -98
                 dc.w    -92, -86, -80, -74, -68, -62, -56, -50, -44, -37, -31, -25, -19, -13, -6, 0
-				even
+	even
 
 Sprite:			incbin		"Data\8x8MaskShift.bin"
 	even
@@ -779,12 +894,13 @@ Font:			incbin 		"Data\Font8x8.bin"
 
 				dcb.b	2048,0
 TopOfStack:
-				even
+	even
 
 QLixBackgroundCompressed:
 	incbin		"Data\QLixBackground.bin.zx0"
 	even
 
-QLixBackground:
-				dcb.b	32*1024,0
-                end
+QLixBackground:	dcb.b	32*1024,0
+	even
+	
+	end

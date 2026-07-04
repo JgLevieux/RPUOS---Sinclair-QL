@@ -1,7 +1,15 @@
+
+Keybord01_Enter		equ		5
+Keybord01_Space		equ		4
+Keybord01_Right		equ		3
+Keybord01_Left		equ		2
+Keybord01_Down		equ		1
+Keybord01_Up		equ		0
+
 ;=============================================================================
 ; Read keyboard for : Enter, Space, Right, Left, Down, Up
 ; Input : -
-; Output : d0 : --ESRLDU
+; Output : Fill Keyboard01 --ESRLDU
 ; Destroy : d0
 ;
 ; Note : From sample from https://www.chibiakumas.com/68000/sinclairql.php
@@ -46,9 +54,14 @@ ReadControl01:
 				roxr.b		#3,d2	;Up
 				roxl.b		#1,d0
 				
+				lea			Keyboard01(pc),a0
+				move.b		d0,(a0)
+				
 				movem.l		(sp)+,d1-d7/a0-a6
 
 				rts
+	even
+Keyboard01:	dc.b	0
 	even
 QLJoycommand01:
 	dc.b $09	;0 - Command
