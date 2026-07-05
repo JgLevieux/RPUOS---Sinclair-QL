@@ -196,7 +196,7 @@ MainLoop:
 				bsr		DrawLine
 			endif
 
-				;bsr		ClearScreen
+				bsr		ClearScreen
 				bsr		MovePlayer
 				bsr		MoveQLix
 			
@@ -812,24 +812,30 @@ WaitVBlankLoop:
 				
 
 ; =============================================================================
-; Nettoyage d'écran "rapide"
-; TODO :
-;	- Faire version optimiser avec movem.l
+; Clear screen
 ; =============================================================================
 ClearScreen:
-                movem.l d0-d1/a0,-(sp)
-                lea     ScreenBase(pc),a0
-				move.l	(a0),a0
-                move.w  #255,d0	; 256 lines
-                move.l   #CLEAR_SCREEN_COLOR,d1
-.loop:
-			rept 32
-                move.l  d1,(a0)+
-			endr
-                dbf     d0,.loop
-                movem.l (sp)+,d0-d1/a0
-                rts
+				lea     ScreenBase(pc),a0
+				move.l  (a0),a0
 
+                moveq   #0,d0
+                move.l  d0,d1
+                move.l  d0,d2
+                move.l  d0,d3
+                move.l  d0,d4
+                move.l  d0,d5
+                move.l  d0,d6
+				suba.l  a1,a1
+
+                add.l	#32*1024,a0			; End of screen
+                moveq   #64-1,d7
+.loop_clear:
+			rept 16
+                movem.l d0-d6/a1,-(a0)      ; 32 bytes * 16
+			endr
+                dbf     d7,.loop_clear      ; 64 loop
+
+                rts
 
 			if 0
 				lea     ScreenBase(pc),a0
