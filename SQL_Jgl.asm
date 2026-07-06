@@ -196,7 +196,7 @@ MainLoop:
 				bsr		DrawLine
 			endif
 
-				bsr		ClearScreen
+				;bsr		ClearScreen
 				bsr		MovePlayer
 				bsr		MoveQLix
 			
@@ -258,6 +258,15 @@ MovePlayer:
 				sub.l	#1,d0
 				bsr		GetPixel
 			
+				btst	#Keybord01_Space,d4
+				beq.s	.nospaceleft
+				tst.w	d2						; Black pixel up ?
+				bne.s	.noleft
+				sub.l	#1,(a3)
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				bsr		PlotPixelRed
+.nospaceleft:
 				cmp.w	#ColorPixelWhite,d2
 				bne.s	.noleft
 				sub.l	#1,(a3)
@@ -271,6 +280,15 @@ MovePlayer:
 				add.l	#1,d0
 				bsr		GetPixel
 
+				btst	#Keybord01_Space,d4
+				beq.s	.nospaceright
+				tst.w	d2						; Black pixel up ?
+				bne.s	.noright
+				add.l	#1,(a3)
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				bsr		PlotPixelRed
+.nospaceright:
 				cmp.w	#ColorPixelWhite,d2
 				bne.s	.noright
 				add.l	#1,(a3)
@@ -291,8 +309,7 @@ MovePlayer:
 				sub.l	#1,4(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
-				bsr		PlotPixelWhite
-
+				bsr		PlotPixelRed
 .nospaceup:
 				cmp.w	#ColorPixelWhite,d2
 				bne.s	.noup
@@ -307,6 +324,15 @@ MovePlayer:
 				add.l	#1,d1
 				bsr		GetPixel
 
+				btst	#Keybord01_Space,d4
+				beq.s	.nospacedown
+				tst.w	d2						; Black pixel up ?
+				bne.s	.nodown
+				add.l	#1,4(a3)
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				bsr		PlotPixelRed
+.nospacedown:
 				cmp.w	#ColorPixelWhite,d2
 				bne.s	.nodown
 				add.l	#1,4(a3)
@@ -402,11 +428,13 @@ MoveQLix:
 
 				move.w	d0,d4
 				move.w	d1,d5
-				
-				add.w	d2,d0
+
+; TODO : Draw 2 lines, always from the middle (original coord of the Qix) to make sure we always start from a valid coordinate.
+; TODO : -> means that we need to add a check the the Qix position is always at a valid position (in the playfield)
 				add.w	d3,d1
+ 				add.w	d2,d0
 				sub.w	d2,d4
-				sub.w	d3,d5
+				sub.w	d3,d5						
 
 			; Save line to be erased next time
 				lea		QLixPreviousLines(pc),a0
@@ -424,7 +452,10 @@ MoveQLix:
 				
 				lea		NbFrameLastCollide(pc),a3
 				cmp.w	#0,a6
-				beq.s	.nocollide
+				beq.s	.nocollide					; a6 = color of the pixel which collide
+
+				;cmp.w	#,a6
+				;beq.s	.nocollide					; a6 = color of the pixel which collide
 
 				move.w	(a3),d0
 				bne.s	.notfirstcollide

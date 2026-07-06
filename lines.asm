@@ -8,16 +8,46 @@
 ; Note : Original code generated with AI.
 ; TODO : Probably possible to make it faster for black and white (no need to read VRAM?).
 ;=============================================================================
+; G0 F0 G1 F1 G2 F2 G3 F3
+; R0 B0 R1 B1 R2 B2 R3 B3
 	macro CollideAndSetPixel
-		move.w	(a3),a6		; Read pixels from background
-		cmp.w	#0,a6		; Something in the background?
-		bne		.collide	; We found a collision
+		cmp.w	#0,(a3)		; Something in the background?
+		beq		.noc2\@	; Nothing -> no collision possible
+
+		move.w	d3,a4
+		move.w	d4,a5		; Save d3/d4 if finally no collision
+		move.w	(a3),d4
+		moveq	#0,d3
+		cmp.w	#$3F3F,d2
+		beq.s	.endcollide\@
+		add.w	#2,d3
+		cmp.w	#$CFCF,d2
+		beq.s	.endcollide\@
+		add.w	#2,d3
+		cmp.w	#$F3F3,d2
+		beq.s	.endcollide\@
+		add.w	#2,d3
+.endcollide\@
+		not		d2
+		and.w	d2,d4
+		beq.s	.noc\@		; The dest pixel is black?
+		rol.w	d3,d4
+		move.w	d4,a6
+	;DBGBREAK
+		movem.l (sp)+,d0-d7/a0-a3
+		rts
+.noc\@
+		not		d2
+		move.w	a4,d3
+		move.w	a5,d4
+.noc2\@
 		and.w   d2,(a1)		; Remove ALL bits of the pixel we want to write
 		or.w    d3,(a1)		; Add ONLY bits of the color we want to write
 	endm
 
 DrawLineQLix:
     movem.l d0-d7/a0-a3,-(sp)
+	move.l	#0,a6
 	lea		QLixBackground(pc),a3		; Background for collision
 	lea     ScreenBase(pc),a1			; Screen dest.
 	move.l  (a1),a1
@@ -164,7 +194,7 @@ DrawLineQLix:
 .x_neg:
     neg.w   d4
     tst.w   d5
-    bmi.s   .xn_yn
+    bmi.w   .xn_yn
 .xn_yp:
     cmp.w   d4,d5
     bgt.s   .y_maj_xn_yp
@@ -266,8 +296,6 @@ DrawLineQLix:
     ror.w   #8,d3
 .nx8:
     dbra    d7,.l_y_maj_xn_yn
-
-.collide:
 .end:
     movem.l (sp)+,d0-d7/a0-a3
     rts
@@ -527,3 +555,5 @@ DrawLine:
 .end:
     movem.l (sp)+,d0-d7/a0-a1
     rts
+	
+	
