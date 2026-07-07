@@ -223,9 +223,12 @@ QLixDir:		dc.w	0,64
 	even
 
 QLixPreviousLines:
-				dcb.w	2*2*2,0				; 2 coords (X,Y) * 2 points (for 1 lines) * 2 (frame n-1 & frame n-2)
-
+				dcb.w	2*2*2*2,0	; 2 lines (from Qix pos to edges) * 2 coords (X,Y) * 2 points (for 1 lines) * 2 (frame n-1 & frame n-2)
+	even
 PlayerCoord:	dc.l	0,0				
+	even
+PlayerIsTracing:	dc.b 0
+	even
 
 ;=============================================================================
 ; Move Player
@@ -250,49 +253,7 @@ MovePlayer:
 				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
 				moveq	#0,d3
 
-; Can go Left ?
-				btst	#Keybord01_Left,d4
-				beq.s	.noleft
-				move.l	(a3),d0
-				move.l	4(a3),d1
-				sub.l	#1,d0
-				bsr		GetPixel
-			
-				btst	#Keybord01_Space,d4
-				beq.s	.nospaceleft
-				tst.w	d2						; Black pixel up ?
-				bne.s	.noleft
-				sub.l	#1,(a3)
-				move.l	(a3),d0
-				move.l	4(a3),d1
-				bsr		PlotPixelRed
-.nospaceleft:
-				cmp.w	#ColorPixelWhite,d2
-				bne.s	.noleft
-				sub.l	#1,(a3)
-.noleft:
-
-; Can go Right ?
-				btst	#Keybord01_Right,d4
-				beq.s	.noright
-				move.l	(a3),d0
-				move.l	4(a3),d1
-				add.l	#1,d0
-				bsr		GetPixel
-
-				btst	#Keybord01_Space,d4
-				beq.s	.nospaceright
-				tst.w	d2						; Black pixel up ?
-				bne.s	.noright
-				add.l	#1,(a3)
-				move.l	(a3),d0
-				move.l	4(a3),d1
-				bsr		PlotPixelRed
-.nospaceright:
-				cmp.w	#ColorPixelWhite,d2
-				bne.s	.noright
-				add.l	#1,(a3)
-.noright:
+				lea		PlayerIsTracing(pc),a5
 
 ; Can go Up ?
 				btst	#Keybord01_Up,d4
@@ -300,43 +261,119 @@ MovePlayer:
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				sub.l	#1,d1
-				bsr		GetPixel
+				bsr		GetPixel				; Get pixel up color
 
-				btst	#Keybord01_Space,d4
-				beq.s	.nospaceup
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.testspaceup
+
+				sub.l	#1,4(a3)				; If white we move up
+				tst.w	(a5)					; Finish tracing?
+				beq.s	.testspaceup
+				bsr		FillPlayField
+				move.b	#0,(a5)
+
+				bra.s	.noup
+.testspaceup:
+				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				beq.s	.noup
 				tst.w	d2						; Black pixel up ?
 				bne.s	.noup
 				sub.l	#1,4(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
+				move.b	#1,(a5)
 				bsr		PlotPixelRed
-.nospaceup:
-				cmp.w	#ColorPixelWhite,d2
-				bne.s	.noup
-				sub.l	#1,4(a3)
 .noup:
 
-; Can go down ?
+; Can go Down ?
 				btst	#Keybord01_Down,d4
 				beq.s	.nodown
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				add.l	#1,d1
-				bsr		GetPixel
+				bsr		GetPixel				; Get pixel up color
 
-				btst	#Keybord01_Space,d4
-				beq.s	.nospacedown
-				tst.w	d2						; Black pixel up ?
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.testspacedown
+
+				add.l	#1,4(a3)				; If white we move down
+				tst.w	(a5)					; Finish tracing?
+				beq.s	.testspacedown
+				bsr		FillPlayField
+				move.b	#0,(a5)
+
+				bra.s	.nodown
+.testspacedown:
+				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				beq.s	.nodown
+				tst.w	d2						; Black pixel down ?
 				bne.s	.nodown
 				add.l	#1,4(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
+				move.b	#1,(a5)
 				bsr		PlotPixelRed
-.nospacedown:
-				cmp.w	#ColorPixelWhite,d2
-				bne.s	.nodown
-				add.l	#1,4(a3)
 .nodown:
+
+; Can go Right ?
+				btst	#Keybord01_Right,d4
+				beq.s	.noright
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				add.l	#1,d0
+				bsr		GetPixel				; Get pixel up color
+
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.testspaceright
+
+				add.l	#1,(a3)					; If white we move right
+				tst.w	(a5)					; Finish tracing?
+				beq.s	.testspaceright
+				bsr		FillPlayField
+				move.b	#0,(a5)
+
+				bra.s	.noright
+.testspaceright:
+				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				beq.s	.noright
+				tst.w	d2						; Black pixel right ?
+				bne.s	.noright
+				add.l	#1,(a3)
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				move.b	#1,(a5)
+				bsr		PlotPixelRed
+.noright:
+
+; Can go Left ?
+				btst	#Keybord01_Left,d4
+				beq.s	.noleft
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				sub.l	#1,d0
+				bsr		GetPixel				; Get pixel up color
+
+				cmp.w	#ColorPixelWhite,d2
+				bne.s	.testspaceleft
+
+				sub.l	#1,(a3)					; If white we move left
+				tst.w	(a5)					; Finish tracing?
+				beq.s	.testspaceleft
+				bsr		FillPlayField
+				move.b	#0,(a5)
+
+				bra.s	.noleft
+.testspaceleft:
+				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				beq.s	.noleft
+				tst.w	d2						; Black pixel right ?
+				bne.s	.noleft
+				sub.l	#1,(a3)
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				move.b	#1,(a5)
+				bsr		PlotPixelRed
+.noleft:
 
 ; Draw player
 				lea		ScreenBase,a0
@@ -350,6 +387,27 @@ MovePlayer:
 
 				rts
 
+;=============================================================================
+; Fill Playfield when the player close
+;=============================================================================
+FillPlayField:
+                movem.l d0-d7/a0-a6,-(sp)
+
+				DBGBREAK
+
+                movem.l (sp)+,d0-d7/a0-a6
+				rts
+
+;=============================================================================
+; Touch player tracing
+;=============================================================================
+TouchPlayerTracing:
+                movem.l d0-d7/a0-a6,-(sp)
+
+				DBGBREAK
+
+                movem.l (sp)+,d0-d7/a0-a6
+				rts
 				
 ;=============================================================================
 ; Move QLix
@@ -381,7 +439,7 @@ MoveQLix:
 
 				tst.w	d6
 				bne.s	.nodiraddy					; No add (do not change direction) if colliding recently
-				add.w	#2,2(a5)
+				add.w	#1,2(a5)
 .nodiraddy:
 				move.w	2(a5),d0
 				and.w	#$FF,d0
@@ -394,15 +452,27 @@ MoveQLix:
 				add.l	d1,4(a4)
 				
 ; Draw the QLix
-			; Erase previous line.
+			; Erase previous line 1.
 				lea		QLixPreviousLines(pc),a0
 				lea		BufferNum(pc),a1
 				move.w	(a1),d2
-				lsl.w	#3,d2
+				lsl.w	#4,d2
 				move.w	(a0,d2.w),d0
 				move.w	2(a0,d2.w),d1
 				move.w	4(a0,d2.w),d4
 				move.w	6(a0,d2.w),d5
+				move.l	#ColorPixelBlack,d6
+				bsr		DrawLineQLix
+
+			; Erase previous line 2.
+				lea		QLixPreviousLines(pc),a0
+				lea		BufferNum(pc),a1
+				move.w	(a1),d2
+				lsl.w	#4,d2
+				move.w	8(a0,d2.w),d0
+				move.w	10(a0,d2.w),d1
+				move.w	12(a0,d2.w),d4
+				move.w	14(a0,d2.w),d5
 				move.l	#ColorPixelBlack,d6
 				bsr		DrawLineQLix
 
@@ -426,49 +496,82 @@ MoveQLix:
 				move.l	4(a4),d1
 				asr.l   #8,d1
 
+				move.w	d0,d6
+				move.w	d1,d7		; Save X & Y
+
+			; First line
 				move.w	d0,d4
 				move.w	d1,d5
-
-; TODO : Draw 2 lines, always from the middle (original coord of the Qix) to make sure we always start from a valid coordinate.
-; TODO : -> means that we need to add a check the the Qix position is always at a valid position (in the playfield)
-				add.w	d3,d1
- 				add.w	d2,d0
-				sub.w	d2,d4
-				sub.w	d3,d5						
+				add.w	d3,d4
+ 				add.w	d2,d5
 
 			; Save line to be erased next time
 				lea		QLixPreviousLines(pc),a0
 				lea		BufferNum(pc),a1
-				move.w	(a1),d2
-				lsl.w	#3,d2						; Stock depends of the frame
-				move.w	d0,(a0,d2.w)
-				move.w	d1,2(a0,d2.w)
-				move.w	d4,4(a0,d2.w)
-				move.w	d5,6(a0,d2.w)
+				move.w	(a1),d6
+				lsl.w	#4,d6						; Stock depends of the frame
+				move.w	d0,(a0,d6.w)
+				move.w	d1,2(a0,d6.w)
+				move.w	d4,4(a0,d6.w)
+				move.w	d5,6(a0,d6.w)
 
-			; Draw.
+			; Draw first line.
 				move.l	#ColorPixelWhite,d6
 				bsr		DrawLineQLix
 				
+				move.l	a6,a5						; Save color collision if any.
+
+			; Second line
+				move.w	d0,d4
+				move.w	d1,d5
+				sub.w	d3,d4
+ 				sub.w	d2,d5
+
+			; Save line to be erased next time
+				lea		QLixPreviousLines(pc),a0
+				lea		BufferNum(pc),a1
+				move.w	(a1),d6
+				lsl.w	#4,d6						; Stock depends of the frame
+				move.w	d0,8(a0,d6.w)
+				move.w	d1,10(a0,d6.w)
+				move.w	d4,12(a0,d6.w)
+				move.w	d5,14(a0,d6.w)
+
+			; Draw second line.
+				move.l	#ColorPixelBlue,d6
+				bsr		DrawLineQLix
+				
+				move.l	a6,d0
+				move.l	a5,d1
+
 				lea		NbFrameLastCollide(pc),a3
-				cmp.w	#0,a6
-				beq.s	.nocollide					; a6 = color of the pixel which collide
+				tst.w	(a3)
+				bne.s	.notfirstcollide			; Do nothing if already fleeing previous collision
+				
+				tst.w	d0
+				bne.s	.collide
+				tst.w	d1
+				bne.s	.collide
+				bra.s	.nocollide					; Everything black -> No collision
 
-				;cmp.w	#,a6
-				;beq.s	.nocollide					; a6 = color of the pixel which collide
-
-				move.w	(a3),d0
-				bne.s	.notfirstcollide
-;				DBGBREAK
+.collide:
+				;cmp.w	#ColorPixelWhite,d0
+				;bne.s	.nowhitecolor
 				lea		QLixDir(pc),a5
 				add.w	#128,(a5)
-				add.w	#128,2(a5)
+				add.w	#128,2(a5)					; Change direction of the Qix
+				move.w	#4,(a3)						; 4 frames moving to the oposite direction.
+				bra.s	.endcollide
+.nowhitecolor:
+				;cmp.w	#ColorPixelRed,d0
+				;bne.s	.endcollide
+				;bsr		TouchPlayerTracing
+				;bra.s	.endcollide
 
-				move.w	#20,(a3)				; 5 frames moving to the oposite direction.
-.notfirstcollide:
 .nocollide:
-				move.w	(a3),d0
+				tst.w	(a3)
 				beq.s	.endcollide
+.notfirstcollide:
 				sub.w	#1,(a3)
 .endcollide:
                 ;movem.l (sp)+,d0-d7/a0-a6
@@ -499,6 +602,9 @@ ResetQLix:
 				lea		PlayerCoord(pc),a0
 				move.l	#128,(a0)
 				move.l	#240,4(a0)
+				
+				lea		PlayerIsTracing(pc),a0
+				move.b	#0,(a0)
 
 ; Init QLix vars:
 				lea		QLixCoord(pc),a0

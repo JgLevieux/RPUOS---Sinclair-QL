@@ -34,7 +34,7 @@
 		rol.w	d3,d4
 		move.w	d4,a6
 	;DBGBREAK
-		movem.l (sp)+,d0-d7/a0-a3
+		movem.l (sp)+,d0-d7/a0-a5
 		rts
 .noc\@
 		not		d2
@@ -46,7 +46,7 @@
 	endm
 
 DrawLineQLix:
-    movem.l d0-d7/a0-a3,-(sp)
+    movem.l d0-d7/a0-a5,-(sp)
 	move.l	#0,a6
 	lea		QLixBackground(pc),a3		; Background for collision
 	lea     ScreenBase(pc),a1			; Screen dest.
@@ -297,7 +297,7 @@ DrawLineQLix:
 .nx8:
     dbra    d7,.l_y_maj_xn_yn
 .end:
-    movem.l (sp)+,d0-d7/a0-a3
+    movem.l (sp)+,d0-d7/a0-a5
     rts
 
 ;=============================================================================
