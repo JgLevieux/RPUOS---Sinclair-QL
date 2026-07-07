@@ -7,12 +7,12 @@ BARE_METAL			equ		1
 	ifd BARE_METAL
 DOUBLE_BUFFERING	equ		1
 	else
-CLEAR_SCREEN_FRAME	equ		1
+;CLEAR_SCREEN_FRAME	equ		1
 	endif
 ;CLEAR_SCREEN_FRAME	equ		1
 
 	ifd TIMER_MODE
-;CLEAR_SCREEN_COLOR	equ		$AAFFAAFF
+CLEAR_SCREEN_COLOR	equ		$AAFFAAFF
 CLEAR_SCREEN_COLOR	equ		$00550055
 	else
 CLEAR_SCREEN_COLOR	equ		0
@@ -34,11 +34,11 @@ Start:
 			ifd BARE_METAL
                 trap    #0              ; Call QDOS for Superviseur mode
                 ori.w   #$0700,sr       ; All hardware interrupt off.
-			endif
-
+				
 			; Set my own stack
 				lea		TopOfStack,a0
 				move.l	a0,sp
+			endif
 
 				DBGENABLE
 				;DBGBREAK
@@ -75,12 +75,16 @@ MainLoop:
 				
 				move.l	#$20000,(a0)					; Draw in screen 1
 				move.b	#ScreenMode02,$18063			; Display screen 2
+				lea		ScreenBaseFront(pc),a0
+				move.l	#$28000,(a0)
 				move.w	#0,(a1)
 				
 				bra.s	.swapscreen2
 .swapscreen1:
 				move.l	#$28000,(a0)					; Draw in screen 2
 				move.b	#ScreenMode01,$18063			; Display screen 1
+				lea		ScreenBaseFront(pc),a0
+				move.l	#$20000,(a0)
 				move.w	#1,(a1)
 .swapscreen2:
 			endif
@@ -95,105 +99,7 @@ MainLoop:
 			ifd CLEAR_SCREEN_FRAME
 				bsr		ClearScreen						; Complete & simple clear
 			else
-				; Add here targeted clear
-			endif
-			
-; Sample PlotPixel
-			if 0
-			rept 1
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.w	#64,d0
-				move.w	#128,d1
-				add.w	d6,d0
-				bsr		PlotPixelBlue
-				add.w	#1,d0
-				bsr		PlotPixelRed
-				add.w	#1,d0
-				bsr		PlotPixelGreen
-				add.w	#1,d0
-				bsr		PlotPixelYellow
-				add.w	#1,d0
-				bsr		PlotPixelMagenta
-				add.w	#1,d0
-				bsr		PlotPixelCyan
-				add.w	#1,d0
-				bsr		PlotPixelWhite
-				add.w	#1,d0
-				bsr		PlotPixelWhite
-				sub.w	#1,d0
-				bsr		PlotPixelBlack
-				bsr		PlotPixelBlack
-			endr
-			endif
-
-; Sample affichage 16x16 shifted.
-			if 0
-				lea		ScreenBase,a0
-				move.l	(a0),a0
-				lea		SpriteBubbles,a1
-				move.l	#65,d0
-				add.l	d6,d0
-				move.l	#64,d1
-				bsr		DisplaySprite16x16MaskedShifted
-			endif
-
-; Sample affichage image full screen.
-			if 0
-				lea		ScreenBase,a1
-				move.l	(a1),a1
-				lea		SpriteFullScreen(pc),a0
-				move.l	#256*256/4,d7
-.loopsprFS:
-				move.l	(a0)+,(a1)+
-				dbf	d7,.loopsprFS
-			endif
-
-; Sample affichage image full screen compréssée.
-			if 0
-				lea		SpriteFullScreenComp(pc),a0
-				lea		ScreenBase,a1
-				lsl.l	#2,d6
-				move.l	(a1),a1
-				;add.l	d6,a1
-				bsr		zx0_decompress
-			endif
-				
-			
-; Sample affichage 8x8 font.
-			if 0
-				move.l	#0,d0
-				move.l	#256-8,d1
-				lea		TextToDisplay(pc),a0
-				bsr		DisplayText
-			endif
-			
-			if 0
-				move.l	#0,d0
-				move.l	#0,d1
-				move.l	#16,d4
-				move.l	#16,d5
-				move.l	#ColorPixelGreen,d6
-				;DBGBREAK
-				bsr		DrawLine
-				move.l	#16,d0
-				move.l	#0,d1
-				move.l	#0,d4
-				move.l	#16,d5
-				move.l	#ColorPixelWhite,d6
-				bsr		DrawLine
-				move.l	#0,d0
-				move.l	#8,d1
-				move.l	#16,d4
-				move.l	#8,d5
-				move.l	#ColorPixelBlue,d6
-				bsr		DrawLine
-				move.l	#0,d0
-				move.l	#7,d1
-				move.l	#16,d4
-				move.l	#9,d5
-				move.l	#ColorPixelMagenta,d6
-				bsr		DrawLine
+				; Add here targeted clear if needed
 			endif
 
 				;bsr		ClearScreen
@@ -387,6 +293,11 @@ MovePlayer:
 
 				rts
 
+	even
+FloodFillingStackBottom:
+				dcb.b	2048,0
+FloodFillingStack:
+	even
 ;=============================================================================
 ; Fill Playfield when the player close
 ;=============================================================================
@@ -394,7 +305,108 @@ FillPlayField:
                 movem.l d0-d7/a0-a6,-(sp)
 
 				DBGBREAK
+				
+				lea		FloodFillingStack,a6
+				lea		FloodFillingStack,a5
+				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
+				lea		ScreenBase(pc),a4	; a4 = Background collision for GetPixel
 
+				;lea		FloodFillingStackBottom,a3
+				
+				moveq	#0,d0
+				moveq	#0,d1
+				moveq	#0,d4
+				moveq	#0,d5
+
+; Coord to start flood scanline filling
+; First we fill the Qix region
+				lea		QLixCoord(pc),a3
+				move.l	(a3),d0
+				asr.l   #8,d0
+				move.l	4(a3),d1
+				asr.l   #8,d1
+				
+				move.b	d0,-(a6)				; Save first X
+				move.b	d1,-(a6)				; Save first Y
+
+.loopfilling:
+				cmp.l	a6,a5					; Nothing in the filling stack
+				beq.w	.endfilling
+
+				moveq	#0,d4
+				moveq	#0,d5
+				move.b	(a6)+,d5				; Get Y
+				move.b	(a6)+,d4				; Get X
+.scanleft:
+				sub.l	#1,d4
+				move.l	d4,d0
+				move.l	d5,d1
+				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
+				bsr		GetPixel				; Get pixel color in d2
+				cmp.w	#ColorPixelBlack,d2
+				beq.s	.scanleft
+				
+				add.l	#1,d4					; Return to the valid pixel on the right.
+				moveq	#0,d6					; Above flag
+				moveq	#0,d7					; Below flag
+.filltotheright:
+				move.l	d4,d0
+				move.l	d5,d1
+				lea		ScreenBaseFront(pc),a4
+				move.l	(a4),a4
+				bsr		PlotPixelYellow			; Fill
+				move.l	d4,d0
+				move.l	d5,d1
+				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
+				bsr		PlotPixelYellow			; Fill
+
+				move.l	d4,d0
+				move.l	d5,d1
+				sub.l	#1,d1					; Check above.
+				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
+				bsr		GetPixel
+				cmp.w	#ColorPixelBlack,d2		; Empty?
+				bne.s	.somethingabove
+				tst.b	d6
+				bne.s	.testbelow				; Do not stock new line until we get a new one
+				moveq	#1,d6					; Set above flag
+				move.b	d4,-(a6)
+				move.b	d5,-(a6)				; Push next line to filling at previous pixel
+				sub.b	#1,(a6)
+				jmp		.testbelow
+.somethingabove:
+				moveq	#0,d6					; Nothing above, reset above flag
+.testbelow:
+
+				move.l	d4,d0
+				move.l	d5,d1
+				add.l	#1,d1					; Check below.
+				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
+				bsr		GetPixel
+				cmp.w	#ColorPixelBlack,d2		; Empty?
+				bne.s	.somethingbelow
+				tst.b	d7
+				bne.s	.fillnext				; Do not stock new line until we get a new one
+				moveq	#1,d7					; Set above flag
+				move.b	d4,-(a6)
+				move.b	d5,-(a6)				; Push next line to filling at previous pixel
+				add.b	#1,(a6)
+				jmp		.fillnext
+.somethingbelow:
+				moveq	#0,d7					; Nothing below, reset below flag
+.fillnext:
+
+				add.l	#1,d4					; Fill next pixel
+				move.l	d4,d0
+				move.l	d5,d1
+				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
+				bsr		GetPixel
+				cmp.w	#ColorPixelBlack,d2		; Empty?
+				beq.s	.filltotheright
+				
+				jmp		.loopfilling
+				
+.endfilling:				
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -404,7 +416,6 @@ FillPlayField:
 TouchPlayerTracing:
                 movem.l d0-d7/a0-a6,-(sp)
 
-				DBGBREAK
 
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
@@ -550,23 +561,24 @@ MoveQLix:
 				
 				tst.w	d0
 				bne.s	.collide
-				tst.w	d1
+				move.w	d1,d0
+				tst.w	d0
 				bne.s	.collide
 				bra.s	.nocollide					; Everything black -> No collision
 
 .collide:
-				;cmp.w	#ColorPixelWhite,d0
-				;bne.s	.nowhitecolor
+				cmp.w	#ColorPixelWhite,d0
+				bne.s	.nowhitecolor
 				lea		QLixDir(pc),a5
 				add.w	#128,(a5)
 				add.w	#128,2(a5)					; Change direction of the Qix
 				move.w	#4,(a3)						; 4 frames moving to the oposite direction.
 				bra.s	.endcollide
 .nowhitecolor:
-				;cmp.w	#ColorPixelRed,d0
-				;bne.s	.endcollide
-				;bsr		TouchPlayerTracing
-				;bra.s	.endcollide
+				cmp.w	#ColorPixelRed,d0
+				bne.s	.endcollide
+				bsr		TouchPlayerTracing
+				bra.s	.endcollide
 
 .nocollide:
 				tst.w	(a3)
@@ -590,9 +602,11 @@ ResetQLix:
 				lea		$20000,a1
 				bsr		zx0_decompress
 
+			ifd DOUBLE_BUFFERING
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		$28000,a1
 				bsr		zx0_decompress
+			endif
 
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		QLixBackground(pc),a1
@@ -1026,7 +1040,8 @@ GetSinCos:
 ;  ZONE DE DONNÉES / VARIABLES
 ; =============================================================================
 				even
-ScreenBase:		dc.l	$20000          ; Adresse de départ de la mémoire d'écran QL
+ScreenBase:			dc.l	$20000
+ScreenBaseFront:	dc.l	$28000
 	even
 BufferNum:		dc.w	0
 	even

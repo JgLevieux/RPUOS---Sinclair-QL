@@ -70,6 +70,21 @@ PlotPixel:
 ;		d0, d1, d2
 ;		a0
 ; =============================================================================
+	if 0
+				lsl.w	#6,d1
+				add.w	d1,a0
+				
+				move.b	d0,d2
+				lsr.w	#2,d0		; X/4
+				add.w	d0,a0
+				
+				and.b	#$FC,d2
+				lsl.b	#1,d2		; *2 for bit shifting
+				move.b	(a0),d3
+				lsr.b	d2,d3
+				and.b	#$FC,d3
+	endif
+
 GetPixel:
 				move.l	a4,a0
 				
@@ -98,8 +113,6 @@ GetPixel:
                 rts
 
 ; G0 F0 G1 F1 G2 F2 G3 F3 / R0 B0 R1 B1 R2 B2 R3 B3
-
-				
 ;=============================================================================
 ; PlotPixel fixed color (assumes coordinates are 0-255)
 ; Input :
