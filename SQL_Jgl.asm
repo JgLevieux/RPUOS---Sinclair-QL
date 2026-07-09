@@ -23,6 +23,13 @@ COL_INFO_WALL		equ		1
 COL_INFO_TRACING	equ		2
 COL_INFO_FILLING	equ		3
 
+COL_X_START			equ		14
+COL_Y_START			equ		46
+COL_X_END			equ		240
+COL_Y_END			equ		240
+COL_X_SIZE			equ		(COL_X_END-COL_X_START)
+COL_Y_SIZE			equ		(COL_Y_END-COL_Y_START)
+
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
@@ -194,7 +201,7 @@ MovePlayer:
 				bsr		FillPlayField
 				move.b	#0,(a5)
 
-				bra.s	.noup
+				bra		.endmoveplayer
 .testspaceup:
 				btst	#Keybord01_Space,d4		; Press space to move while tracing
 				beq.s	.noup
@@ -209,6 +216,7 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
 				bsr		SetQLixColInfo
+				bra		.endmoveplayer
 .noup:
 
 ; Can go Down ?
@@ -228,7 +236,7 @@ MovePlayer:
 				bsr		FillPlayField
 				move.b	#0,(a5)
 
-				bra.s	.nodown
+				bra		.endmoveplayer
 .testspacedown:
 				btst	#Keybord01_Space,d4		; Press space to move while tracing
 				beq.s	.nodown
@@ -243,6 +251,7 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
 				bsr		SetQLixColInfo
+				bra		.endmoveplayer
 .nodown:
 
 ; Can go Right ?
@@ -262,7 +271,7 @@ MovePlayer:
 				bsr		FillPlayField
 				move.b	#0,(a5)
 
-				bra.s	.noright
+				bra		.endmoveplayer
 .testspaceright:
 				btst	#Keybord01_Space,d4		; Press space to move while tracing
 				beq.s	.noright
@@ -277,6 +286,7 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
 				bsr		SetQLixColInfo
+				bra		.endmoveplayer
 .noright:
 
 ; Can go Left ?
@@ -296,7 +306,7 @@ MovePlayer:
 				bsr		FillPlayField
 				move.b	#0,(a5)
 
-				bra.s	.noleft
+				bra		.endmoveplayer
 .testspaceleft:
 				btst	#Keybord01_Space,d4		; Press space to move while tracing
 				beq.s	.noleft
@@ -311,8 +321,10 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
 				bsr		SetQLixColInfo
+				bra		.endmoveplayer
 .noleft:
 
+.endmoveplayer:
 ; Draw player
 				lea		ScreenBase,a0
 				move.l	(a0),a0
@@ -331,13 +343,8 @@ MovePlayer:
 FillPlayField:
                 movem.l d0-d7/a0-a6,-(sp)
 
-				DBGBREAK
-				
-				;lea		QLixCollision(pc),a4
 				lea		FloodFillingStack,a6
 				lea		FloodFillingStack,a5
-
-				;lea		FloodFillingStackBottom,a3
 				
 				moveq	#0,d0
 				moveq	#0,d1
@@ -426,8 +433,87 @@ FillPlayField:
 .endfilling:
 
 
+; Now we fill the other part and clean the qix region
+				;DBGBREAK
 
+				moveq	#COL_Y_START,d5			; Y screen
+				
+				move.l	#(COL_Y_SIZE)/2-1,d7		; Nb lines
+.loopY:
+				moveq	#COL_X_START,d4			; X screen
+				move.l	#(COL_X_SIZE)/2-1,d6		; Nb cols
 
+				lea		QLixCollision(pc),a0
+				move.w	d4,d0
+				move.w	d5,d1
+				lsr.w	#1,d1		; /2 (128)
+				lsl.w	#7,d1		; *128 (256 / 2)
+				add.w	d1,a0
+				
+				lsr.w	#1,d0		; X/2
+				add.w	d0,a0
+.loopX:
+				move.b	(a0)+,d0
+
+				cmp.b	#COL_INFO_NOTHING,d0		; empty place become a wall
+				beq.s	.tobefilled
+
+				cmp.b	#COL_INFO_TRACING,d0		; player tracing become a wall
+				beq.s	.tobefilled
+
+				cmp.b	#COL_INFO_FILLING,d0
+				beq.s	.isfilling
+
+				bra.s	.doloop
+
+.tobefilled:
+				move.b	#COL_INFO_WALL,-1(a0)
+
+				lea		$20000,a4
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixelWhite
+				add.w	#1,d0
+				bsr		PlotPixelWhite
+				move.w	d4,d0
+				add.w	#1,d1
+				bsr		PlotPixelWhite
+				add.w	#1,d0
+				bsr		PlotPixelWhite
+
+				lea		$28000,a4
+				move.w	d4,d0
+				move.w	d5,d1
+				;bsr		PlotPixelWhite
+
+				lea		QLixBackground(pc),a4
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixelWhite
+				add.w	#1,d0
+				bsr		PlotPixelWhite
+				move.w	d4,d0
+				add.w	#1,d1
+				bsr		PlotPixelWhite
+				add.w	#1,d0
+				bsr		PlotPixelWhite
+				bra.s	.doloop
+
+.isfilling:
+				move.b	#COL_INFO_NOTHING,-1(a0)	; filled area become empty
+				
+.doloop:				
+				add.w	#2,d4
+				dbra	d6,.loopX
+
+                ;movem.l d0-d7/a0-a6,-(sp)
+				;bsr		ClearScreen
+				;bsr		DebugDisplayQLixColInfo
+                ;movem.l (sp)+,d0-d7/a0-a6
+				;DBGBREAK
+
+				add.w	#2,d5
+				dbra	d7,.loopY
 
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
@@ -699,12 +785,12 @@ ResetQLix:
 ; Init screen and background for collision
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		$20000,a1
-				;bsr		zx0_decompress
+				bsr		zx0_decompress
 
 			ifd DOUBLE_BUFFERING
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		$28000,a1
-				;bsr		zx0_decompress
+				bsr		zx0_decompress
 			endif
 
 				lea		QLixBackgroundCompressed(pc),a0
@@ -718,9 +804,9 @@ ResetQLix:
 				move.l	#0,(a0)+
 				dbra	d1,.clearcol
 
-				move.l	#15,d4
-				move.l	#47,d5
-				move.l	#240-47-1,d7
+				move.l	#COL_X_START,d4
+				move.l	#COL_Y_START,d5
+				move.l	#COL_Y_SIZE-1,d7
 .lineleft:
 				move.l	d4,d0
 				move.l	d5,d1
@@ -729,9 +815,9 @@ ResetQLix:
 				add.l	#1,d5
 				dbra	d7,.lineleft
 
-				move.l	#240,d4
-				move.l	#47,d5
-				move.l	#240-47-1,d7
+				move.l	#COL_X_END,d4
+				move.l	#COL_Y_START,d5
+				move.l	#COL_Y_SIZE-1,d7
 .lineright:
 				move.l	d4,d0
 				move.l	d5,d1
@@ -740,9 +826,9 @@ ResetQLix:
 				add.l	#1,d5
 				dbra	d7,.lineright
 
-				move.l	#15,d4
-				move.l	#47,d5
-				move.l	#240-15-1,d7
+				move.l	#COL_X_START,d4
+				move.l	#COL_Y_START,d5
+				move.l	#COL_X_SIZE-1,d7
 .linetop:
 				move.l	d4,d0
 				move.l	d5,d1
@@ -751,9 +837,9 @@ ResetQLix:
 				add.l	#1,d4
 				dbra	d7,.linetop
 
-				move.l	#15,d4
-				move.l	#240,d5
-				move.l	#240-15-1,d7
+				move.l	#COL_X_START,d4
+				move.l	#COL_Y_END,d5
+				move.l	#COL_X_SIZE-1,d7
 .linebottom:
 				move.l	d4,d0
 				move.l	d5,d1
