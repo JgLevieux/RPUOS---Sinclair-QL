@@ -18,6 +18,10 @@ CLEAR_SCREEN_COLOR	equ		$00550055
 CLEAR_SCREEN_COLOR	equ		0
 	endif
 
+COL_INFO_NOTHING	equ		0
+COL_INFO_WALL		equ		1
+COL_INFO_TRACING	equ		2
+COL_INFO_FILLING	equ		3
 
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
@@ -36,7 +40,7 @@ Start:
                 ori.w   #$0700,sr       ; All hardware interrupt off.
 				
 			; Set my own stack
-				lea		TopOfStack,a0
+				lea		TopOfStack(pc),a0
 				move.l	a0,sp
 			endif
 
@@ -56,17 +60,12 @@ Start:
 				bsr     ClearScreen
 
 				bsr		ResetQLix
-
-			ifd DOUBLE_BUFFERING				
-				move.l	#$28000,(a0)					; Init draw in screen 2 to swap directly to 1
-			endif
-
 MainLoop:
 			; WaitVBlank
 				jsr		WaitVBlank
 
 			; Double buffering
-			ifd DOUBLE_BUFFERING				
+			if 0 ;d DOUBLE_BUFFERING				
 				lea		ScreenBase(pc),a0
 				lea		BufferNum(pc),a1
 				move.l	(a0),d0
@@ -105,6 +104,16 @@ MainLoop:
 				;bsr		ClearScreen
 				bsr		MovePlayer
 				bsr		MoveQLix
+
+				lea		Keyboard01(pc),a1
+				move.b	(a1),d4					; d4 = bits clavier
+				btst	#Keybord01_Enter,d4		; Press space to move while tracing
+				beq.s	.nobreakpoint
+				;DBGBREAK
+				bsr		ClearScreen
+				bsr		DebugDisplayQLixColInfo
+.nobreakpoint:
+			
 			
 			ifd TIMER_MODE
 				DisplayOffForProfiling
@@ -135,7 +144,14 @@ PlayerCoord:	dc.l	0,0
 	even
 PlayerIsTracing:	dc.b 0
 	even
-
+QLixCollision:	dcb.b	(256/2)*(256/2),0
+	even
+FloodFillingStackBottom:
+				dcb.b	2048,0
+FloodFillingStack:
+	even
+NbFrameLastCollide: dc.w 0
+	even
 ;=============================================================================
 ; Move Player
 ;=============================================================================
@@ -189,6 +205,10 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.b	#1,(a5)
 				bsr		PlotPixelRed
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				move.l	#COL_INFO_TRACING,d2
+				bsr		SetQLixColInfo
 .noup:
 
 ; Can go Down ?
@@ -219,6 +239,10 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.b	#1,(a5)
 				bsr		PlotPixelRed
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				move.l	#COL_INFO_TRACING,d2
+				bsr		SetQLixColInfo
 .nodown:
 
 ; Can go Right ?
@@ -249,6 +273,10 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.b	#1,(a5)
 				bsr		PlotPixelRed
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				move.l	#COL_INFO_TRACING,d2
+				bsr		SetQLixColInfo
 .noright:
 
 ; Can go Left ?
@@ -279,6 +307,10 @@ MovePlayer:
 				move.l	4(a3),d1
 				move.b	#1,(a5)
 				bsr		PlotPixelRed
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				move.l	#COL_INFO_TRACING,d2
+				bsr		SetQLixColInfo
 .noleft:
 
 ; Draw player
@@ -293,11 +325,6 @@ MovePlayer:
 
 				rts
 
-	even
-FloodFillingStackBottom:
-				dcb.b	2048,0
-FloodFillingStack:
-	even
 ;=============================================================================
 ; Fill Playfield when the player close
 ;=============================================================================
@@ -306,10 +333,9 @@ FillPlayField:
 
 				DBGBREAK
 				
+				;lea		QLixCollision(pc),a4
 				lea		FloodFillingStack,a6
 				lea		FloodFillingStack,a5
-				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
-				lea		ScreenBase(pc),a4	; a4 = Background collision for GetPixel
 
 				;lea		FloodFillingStackBottom,a3
 				
@@ -338,41 +364,34 @@ FillPlayField:
 				move.b	(a6)+,d5				; Get Y
 				move.b	(a6)+,d4				; Get X
 .scanleft:
-				sub.l	#1,d4
+				sub.l	#2,d4
 				move.l	d4,d0
 				move.l	d5,d1
-				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
-				bsr		GetPixel				; Get pixel color in d2
-				cmp.w	#ColorPixelBlack,d2
+				bsr		GetQLixColInfo
+				cmp.b	#COL_INFO_NOTHING,d2
 				beq.s	.scanleft
 				
-				add.l	#1,d4					; Return to the valid pixel on the right.
+				add.l	#2,d4					; Return to the valid pixel on the right.
 				moveq	#0,d6					; Above flag
 				moveq	#0,d7					; Below flag
 .filltotheright:
 				move.l	d4,d0
 				move.l	d5,d1
-				lea		ScreenBaseFront(pc),a4
-				move.l	(a4),a4
-				bsr		PlotPixelYellow			; Fill
-				move.l	d4,d0
-				move.l	d5,d1
-				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
-				bsr		PlotPixelYellow			; Fill
+				move.b	#COL_INFO_FILLING,d2
+				bsr		SetQLixColInfo
 
 				move.l	d4,d0
 				move.l	d5,d1
-				sub.l	#1,d1					; Check above.
-				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
-				bsr		GetPixel
-				cmp.w	#ColorPixelBlack,d2		; Empty?
+				sub.l	#2,d1					; Check above.
+				bsr		GetQLixColInfo
+				cmp.b	#COL_INFO_NOTHING,d2
 				bne.s	.somethingabove
 				tst.b	d6
 				bne.s	.testbelow				; Do not stock new line until we get a new one
 				moveq	#1,d6					; Set above flag
 				move.b	d4,-(a6)
 				move.b	d5,-(a6)				; Push next line to filling at previous pixel
-				sub.b	#1,(a6)
+				sub.b	#2,(a6)
 				jmp		.testbelow
 .somethingabove:
 				moveq	#0,d6					; Nothing above, reset above flag
@@ -380,33 +399,36 @@ FillPlayField:
 
 				move.l	d4,d0
 				move.l	d5,d1
-				add.l	#1,d1					; Check below.
-				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
-				bsr		GetPixel
-				cmp.w	#ColorPixelBlack,d2		; Empty?
+				add.l	#2,d1					; Check below.
+				bsr		GetQLixColInfo
+				cmp.b	#COL_INFO_NOTHING,d2
 				bne.s	.somethingbelow
 				tst.b	d7
 				bne.s	.fillnext				; Do not stock new line until we get a new one
 				moveq	#1,d7					; Set above flag
 				move.b	d4,-(a6)
 				move.b	d5,-(a6)				; Push next line to filling at previous pixel
-				add.b	#1,(a6)
+				add.b	#2,(a6)
 				jmp		.fillnext
 .somethingbelow:
 				moveq	#0,d7					; Nothing below, reset below flag
 .fillnext:
 
-				add.l	#1,d4					; Fill next pixel
+				add.l	#2,d4					; Fill next pixel
 				move.l	d4,d0
 				move.l	d5,d1
-				lea		QLixBackground(pc),a4	; a4 = Background collision for GetPixel
-				bsr		GetPixel
-				cmp.w	#ColorPixelBlack,d2		; Empty?
+				bsr		GetQLixColInfo
+				cmp.b	#COL_INFO_NOTHING,d2
 				beq.s	.filltotheright
 				
 				jmp		.loopfilling
 				
-.endfilling:				
+.endfilling:
+
+
+
+
+
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -589,7 +611,84 @@ MoveQLix:
                 ;movem.l (sp)+,d0-d7/a0-a6
 				rts
 
-NbFrameLastCollide: dc.w 0
+;=============================================================================
+; Collision info
+; d0 : x (0-255)
+; d1 : y (0-255)
+; d2 : 0 (nothing), 1 (wall), 2 (tracing), 3-FF (filling)
+;=============================================================================
+SetQLixColInfo:
+				lea		QLixCollision(pc),a0
+				;DBGBREAK
+				and.w	#$FE,d1		; do not keep lowest bit (multiple of 2)
+				lsl.w	#6,d1		; *64 (256 / 2 / 2)
+				add.w	d1,a0
+				
+				lsr.w	#1,d0		; X/2
+				add.w	d0,a0
+
+				move.b	d2,(a0)		; We set the info
+				rts
+
+GetQLixColInfo:
+				lea		QLixCollision(pc),a0
+				and.w	#$FE,d1		; do not keep lowest bit (multiple of 2)
+				lsl.w	#6,d1		; *64 (256 / 2 / 2)
+				add.w	d1,a0
+				
+				move.b	d0,d3
+				lsr.w	#1,d0		; X/2
+				add.w	d0,a0
+				
+				move.b	(a0),d2		; We get the info
+				rts
+
+; For debug purpose only
+	macro PlotDebug
+				;DBGBREAK
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixel\1
+	endm
+DebugDisplayQLixColInfo:
+				lea		QLixCollision(pc),a0
+				lea		ScreenBase(pc),a4
+				move.l	(a4),a4
+
+				moveq	#0,d5					; Y screen
+				
+				move.l	#256/2-1,d7				; 128 lines
+.loopY:
+				moveq	#0,d4					; X screen
+				move.l	#256/2-1,d6				; 128 col
+.loopX:
+				move.b	(a0)+,d0
+
+				cmp.b	#COL_INFO_NOTHING,d0
+				beq.s	.doloop
+
+				cmp.b	#COL_INFO_WALL,d0
+				beq.s	.isWhite
+
+				cmp.b	#COL_INFO_TRACING,d0
+				beq.s	.isRed
+
+				PlotDebug <Yellow>
+				bra.s	.doloop
+
+.isRed:
+				PlotDebug <Red>
+				bra.s	.doloop
+
+.isWhite:
+				PlotDebug <White>
+				
+.doloop:				
+				add.w	#2,d4
+				dbra	d6,.loopX
+				add.w	#2,d5
+				dbra	d7,.loopY
+				rts
 
 ;=============================================================================
 ; ResetQLix
@@ -600,18 +699,69 @@ ResetQLix:
 ; Init screen and background for collision
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		$20000,a1
-				bsr		zx0_decompress
+				;bsr		zx0_decompress
 
 			ifd DOUBLE_BUFFERING
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		$28000,a1
-				bsr		zx0_decompress
+				;bsr		zx0_decompress
 			endif
 
 				lea		QLixBackgroundCompressed(pc),a0
 				lea		QLixBackground(pc),a1
 				bsr		zx0_decompress
 
+; Init collisions informations
+				lea		QLixCollision(pc),a0
+				move.l	#(256/2)*(256/2)/4-1,d1				; 4 bytes move.l
+.clearcol:
+				move.l	#0,(a0)+
+				dbra	d1,.clearcol
+
+				move.l	#15,d4
+				move.l	#47,d5
+				move.l	#240-47-1,d7
+.lineleft:
+				move.l	d4,d0
+				move.l	d5,d1
+				move.l	#COL_INFO_WALL,d2
+				bsr		SetQLixColInfo
+				add.l	#1,d5
+				dbra	d7,.lineleft
+
+				move.l	#240,d4
+				move.l	#47,d5
+				move.l	#240-47-1,d7
+.lineright:
+				move.l	d4,d0
+				move.l	d5,d1
+				move.l	#COL_INFO_WALL,d2
+				bsr		SetQLixColInfo
+				add.l	#1,d5
+				dbra	d7,.lineright
+
+				move.l	#15,d4
+				move.l	#47,d5
+				move.l	#240-15-1,d7
+.linetop:
+				move.l	d4,d0
+				move.l	d5,d1
+				move.l	#COL_INFO_WALL,d2
+				bsr		SetQLixColInfo
+				add.l	#1,d4
+				dbra	d7,.linetop
+
+				move.l	#15,d4
+				move.l	#240,d5
+				move.l	#240-15-1,d7
+.linebottom:
+				move.l	d4,d0
+				move.l	d5,d1
+				move.l	#COL_INFO_WALL,d2
+				bsr		SetQLixColInfo
+				add.l	#1,d4
+				dbra	d7,.linebottom
+				
 ; Init player vars
 				lea		PlayerCoord(pc),a0
 				move.l	#128,(a0)
