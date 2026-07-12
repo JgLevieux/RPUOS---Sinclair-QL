@@ -48,7 +48,7 @@
 DrawLineQLix:
     movem.l d0-d7/a0-a5,-(sp)
 	move.l	#0,a6
-	lea		QLixBackground(pc),a3		; Background for collision
+	move.l	#$28000,a3
 	lea     ScreenBase(pc),a1			; Screen dest.
 	move.l  (a1),a1
 

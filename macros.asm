@@ -6,6 +6,11 @@
 				and.b #%11111101,$18063		; retset bit 1 & 3
 	endm
 
+	macro CleanVarB
+		lea		\1(pc),\2
+		clr.b	(\2)
+	endm
+	
 	macro DBGENABLE
 		moveq #5,d1
 		moveq #-26,d0
