@@ -23,12 +23,8 @@ COL_INFO_WALL		equ		1
 COL_INFO_TRACING	equ		2
 COL_INFO_FILLING	equ		3
 
-COL_X_START			equ		16
-COL_Y_START			equ		48
-COL_X_END			equ		240
-COL_Y_END			equ		240
-COL_X_SIZE			equ		(COL_X_END-COL_X_START)
-COL_Y_SIZE			equ		(COL_Y_END-COL_Y_START)
+PLAYFIELD_START_X	equ		32
+PLAYFIELD_START_Y	equ		48
 
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
@@ -421,8 +417,8 @@ MovePlayer:
 ;=============================================================================
 ; Check if player can move at this coordinate
 ; Input :
-; 		d0 = X (0-255)
-;		d1 = Y (0-255)
+; 		d0 = X (0-191)
+;		d1 = Y (0-191)
 ; Output : -
 ;		d2 = 1 - can move to / 0 = can fill to / 2 - can't move to
 ; Destroy : 
@@ -434,12 +430,17 @@ MovePlayer:
 ;COL_INFO_TRACING	equ		2
 ;COL_INFO_FILLING	equ		3
 PlayerCanMove:
+				;DBGBREAK
+
+				sub.w	#PLAYFIELD_START_X,d0
+				sub.w	#PLAYFIELD_START_Y,d1
 				lea 	QLixCollision(pc),a2
-				and.w	#$FE,d1		; do not keep lowest bit (multiple of 2)
-				lsl.w	#6,d1		; *64 (256 / 2 / 2)
+				move.w	d1,d2
+				lsl.w	#6,d2		; *64
+				lsl.w	#7,d1		; *128
 				add.w	d1,a2
-				
-				lsr.w	#1,d0		; X/2
+				add.w	d2,a2		; *192
+
 				add.w	d0,a2
 
 				move.b	(a2),d2
@@ -453,17 +454,17 @@ PlayerCanMove:
 				beq.s	.canmoveto
 				tst.b	-1(a2)
 				beq.s	.canmoveto
-				tst.b	128(a2)
+				tst.b	192(a2)
 				beq.s	.canmoveto
-				tst.b	-128(a2)
+				tst.b	-192(a2)
 				beq.s	.canmoveto
-				tst.b	-127(a2)
+				tst.b	-191(a2)
 				beq.s	.canmoveto
-				tst.b	-129(a2)
+				tst.b	-193(a2)
 				beq.s	.canmoveto
-				tst.b	129(a2)
+				tst.b	193(a2)
 				beq.s	.canmoveto
-				tst.b	127(a2)
+				tst.b	191(a2)
 				beq.s	.canmoveto
 			
 				bra.s	.cantmoveto
@@ -576,22 +577,22 @@ FillPlayField:
 ; Now we fill the other part and clean the qix region
 				;DBGBREAK
 
-				moveq	#COL_Y_START,d5			; Y screen
+				moveq	#0,d5			; Y screen
 				
-				move.l	#(COL_Y_SIZE)/2-1,d7		; Nb lines
+				move.l	#192-1,d7		; Nb lines
 .loopY:
-				moveq	#COL_X_START,d4			; X screen
-				move.l	#(COL_X_SIZE)/2-1,d6		; Nb cols
+				moveq	#0,d4			; X screen
+				move.l	#192-1,d6		; Nb cols
 
 				lea		QLixCollision(pc),a0
-				move.w	d4,d0
 				move.w	d5,d1
-				lsr.w	#1,d1		; /2 (128)
-				lsl.w	#7,d1		; *128 (256 / 2)
+				add.w	d4,a0		; X
+				move.w	d1,d0
+				lsl.w	#7,d1		; *128
+				lsl.w	#6,d0		; *64
 				add.w	d1,a0
-				
-				lsr.w	#1,d0		; X/2
-				add.w	d0,a0
+				add.w	d0,a0		; *192 (Y)
+
 .loopX:
 				move.b	(a0)+,d0
 
@@ -611,7 +612,9 @@ FillPlayField:
 
 				lea		$20000,a4
 				move.w	d4,d0
+				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
+				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelWhite
 				add.w	#1,d0
 				bsr		PlotPixelWhite
@@ -624,6 +627,10 @@ FillPlayField:
 				move.l	#$28000,a4
 				move.w	d4,d0
 				move.w	d5,d1
+				move.w	d4,d0
+				add.w	#PLAYFIELD_START_X,d0
+				move.w	d5,d1
+				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelWhite
 				add.w	#1,d0
 				bsr		PlotPixelWhite
@@ -638,7 +645,7 @@ FillPlayField:
 				move.b	#COL_INFO_NOTHING,-1(a0)	; filled area become empty
 				
 .doloop:				
-				add.w	#2,d4
+				add.w	#1,d4
 				dbra	d6,.loopX
 
                 ;movem.l d0-d7/a0-a6,-(sp)
@@ -647,7 +654,7 @@ FillPlayField:
                 ;movem.l (sp)+,d0-d7/a0-a6
 				;DBGBREAK
 
-				add.w	#2,d5
+				add.w	#1,d5
 				dbra	d7,.loopY
 
                 movem.l (sp)+,d0-d7/a0-a6
@@ -669,22 +676,21 @@ TouchPlayerTracing:
 				sub.l	#3,d1
 				bsr 	CleanSprite8x8Shifted
 
-				moveq	#COL_Y_START,d5			; Y screen
+				moveq	#0,d5		; Y screen
 				
-				move.l	#(COL_Y_SIZE)/2-1,d7	; Nb lines
+				move.l	#192-1,d7	; Nb lines
 .loopY:
-				moveq	#COL_X_START,d4			; X screen
-				move.l	#(COL_X_SIZE)/2-1,d6	; Nb cols
+				moveq	#0,d4		; X screen
+				move.l	#192-1,d6	; Nb cols
 
 				lea		QLixCollision(pc),a0
-				move.w	d4,d0
 				move.w	d5,d1
-				lsr.w	#1,d1		; /2 (128)
-				lsl.w	#7,d1		; *128 (256 / 2)
+				add.w	d4,a0		; X
+				move.w	d1,d0
+				lsl.w	#7,d1		; *128
+				lsl.w	#6,d0		; *64
 				add.w	d1,a0
-				
-				lsr.w	#1,d0		; X/2
-				add.w	d0,a0
+				add.w	d0,a0		; *192 (Y)
 .loopX:
 				move.b	(a0)+,d0
 
@@ -695,7 +701,9 @@ TouchPlayerTracing:
 
 				lea		$20000,a4
 				move.w	d4,d0
+				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
+				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelBlack
 				add.w	#1,d0
 				bsr		PlotPixelBlack
@@ -707,7 +715,9 @@ TouchPlayerTracing:
 
 				move.l	#$28000,a4
 				move.w	d4,d0
+				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
+				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelBlack
 				add.w	#1,d0
 				bsr		PlotPixelBlack
@@ -722,9 +732,9 @@ TouchPlayerTracing:
 				move.b	#COL_INFO_NOTHING,-1(a0)	; filled area become empty
 				
 .doloop:				
-				add.w	#2,d4
+				add.w	#1,d4
 				dbra	d6,.loopX
-				add.w	#2,d5
+				add.w	#1,d5
 				dbra	d7,.loopY
 
 				lea		PlayerCoord(pc),a0
@@ -909,32 +919,30 @@ MoveQLix:
 
 ;=============================================================================
 ; Collision info
-; d0 : x (0-255)
-; d1 : y (0-255)
+; d0 : x (0-191)
+; d1 : y (0-191)
 ; d2 : 0 (nothing), 1 (wall), 2 (tracing), 3-FF (filling)
 ;=============================================================================
 SetQLixColInfo:
 				lea		QLixCollision(pc),a0
-				;DBGBREAK
-				and.w	#$FE,d1		; do not keep lowest bit (multiple of 2)
-				lsl.w	#6,d1		; *64 (256 / 2 / 2)
+				add.w	d0,a0		; X
+				move.w	d1,d0
+				lsl.w	#7,d1		; *128
+				lsl.w	#6,d0		; *64
 				add.w	d1,a0
-				
-				lsr.w	#1,d0		; X/2
-				add.w	d0,a0
+				add.w	d0,a0		; *192 (Y)
 
 				move.b	d2,(a0)		; We set the info
 				rts
 
 GetQLixColInfo:
 				lea		QLixCollision(pc),a0
-				and.w	#$FE,d1		; do not keep lowest bit (multiple of 2)
-				lsl.w	#6,d1		; *64 (256 / 2 / 2)
+				add.w	d0,a0		; X
+				move.w	d1,d0
+				lsl.w	#7,d1		; *128
+				lsl.w	#6,d0		; *64
 				add.w	d1,a0
-				
-				move.b	d0,d3
-				lsr.w	#1,d0		; X/2
-				add.w	d0,a0
+				add.w	d0,a0		; *192 (Y)
 				
 				move.b	(a0),d2		; We get the info
 				rts
@@ -951,12 +959,12 @@ DebugDisplayQLixColInfo:
 				lea		ScreenBase(pc),a4
 				move.l	(a4),a4
 
-				moveq	#0,d5					; Y screen
+				moveq	#PLAYFIELD_START_Y,d5	; Y screen
 				
-				move.l	#256/2-1,d7				; 128 lines
+				move.l	#192-1,d7				; 192 lines
 .loopY:
-				moveq	#0,d4					; X screen
-				move.l	#256/2-1,d6				; 128 col
+				moveq	#PLAYFIELD_START_X,d4	; X screen
+				move.l	#192-1,d6				; 192 col
 .loopX:
 				move.b	(a0)+,d0
 
@@ -980,9 +988,9 @@ DebugDisplayQLixColInfo:
 				PlotDebug <White>
 				
 .doloop:				
-				add.w	#2,d4
+				add.w	#1,d4
 				dbra	d6,.loopX
-				add.w	#2,d5
+				add.w	#1,d5
 				dbra	d7,.loopY
 				rts
 
@@ -1009,43 +1017,37 @@ ResetQLix:
 
 ; Init collisions informations
 				lea		QLixCollision(pc),a0
-				move.l	#(256/2)*(256/2)-1,d1
+				move.l	#192*192-1,d1
 .clearcol:
 				move.b	#COL_INFO_WALL,(a0)+
 				dbra	d1,.clearcol
 
-				moveq	#COL_Y_START,d5			; Y screen
-				move.l	#(COL_Y_SIZE)/2-1,d7	; Nb lines
+				moveq	#1,d5		; Y screen
+				move.l	#190-1,d7	; Nb lines
 .loopY:
-				moveq	#COL_X_START,d4			; X screen
-				move.l	#(COL_X_SIZE)/2-1,d6	; Nb cols
-
-				lea		QLixCollision(pc),a0
+				moveq	#1,d4		; X screen
+				move.l	#190-1,d6	; Nb cols
+.loopX:
 				move.w	d4,d0
 				move.w	d5,d1
-				lsr.w	#1,d1		; /2 (128)
-				lsl.w	#7,d1		; *128 (256 / 2)
-				add.w	d1,a0
-				
-				lsr.w	#1,d0		; X/2
-				add.w	d0,a0
-.loopX:
-				move.b	#COL_INFO_NOTHING,(a0)+
-				add.w	#2,d4
+				move.w	#COL_INFO_NOTHING,d2
+				bsr		SetQLixColInfo
+
+				add.w	#1,d4
 				dbra	d6,.loopX
 
-				add.w	#2,d5
+				add.w	#1,d5
 				dbra	d7,.loopY
 				
 ; Init player vars
 				lea		PlayerCoord(pc),a0
 				move.l	#128,(a0)
-				move.l	#240,4(a0)
+				move.l	#239,4(a0)
 				move.l	#128,8(a0)
-				move.l	#240,12(a0)
+				move.l	#239,12(a0)
 				lea		PlayerCoordStartTracing(pc),a0
 				move.l	#128,(a0)
-				move.l	#240,4(a0)
+				move.l	#239,4(a0)
 
 				CleanVarB PlayerIsTracing,a0
 				CleanVarB PlayerMoveUp,a0
