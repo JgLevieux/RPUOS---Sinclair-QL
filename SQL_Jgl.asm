@@ -121,7 +121,7 @@ MainLoop:
 			ifd TIMER_MODE
 				DisplayOffForProfiling
 			endif
-				jmp		MainLoop
+				bra.s	MainLoop
 
                 rts
 
@@ -148,15 +148,6 @@ PlayerCoord:	dc.l	0,0
 PlayerCoordStartTracing:	dc.l	0,0				
 	even
 PlayerIsTracing:	dc.b 0
-	even
-PlayerMoveUp:			dc.b 0
-PlayerMoveDown:			dc.b 0
-PlayerMoveLeft:			dc.b 0
-PlayerMoveRight:		dc.b 0
-PlayerFillUp:			dc.b 0
-PlayerFillDown:			dc.b 0
-PlayerFillLeft:			dc.b 0
-PlayerFillRight:		dc.b 0
 	even
 FloodFillingStackBottom:
 				dcb.b	2048,0
@@ -190,30 +181,15 @@ MovePlayer:
 				lea		PlayerIsTracing(pc),a5
 
 ; Can go Up ?
-				lea		PlayerMoveUp(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckFillUp
-				clr.b	(a6)
-				bra.s	.MoveUp
-.CheckFillUp:
-				lea		PlayerFillUp(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckMoveUp
-				clr.b	(a6)
-				bra.s	.FillUp
-.CheckMoveUp:
 				btst	#Keybord01_Up,d4
 				beq.s	.NoUp
 				move.l	(a3),d0
 				move.l	4(a3),d1
-				sub.l	#2,d1					; 2 to test next collision
+				sub.l	#1,d1					; test next collision
 				bsr		PlayerCanMove
 
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceUp
-
-				lea		PlayerMoveUp(pc),a6
-				move.b	#1,(a6)
 .MoveUp:
 				sub.l	#1,4(a3) 				; If white we move
 				tst.b	(a5)					; Finish tracing?
@@ -227,8 +203,6 @@ MovePlayer:
 				beq.s	.NoUp
 				tst.w	d2						; empty ?
 				bne.s	.NoUp
-				lea		PlayerFillUp(pc),a6
-				move.b	#1,(a6)
 .FillUp:
 				sub.l	#1,4(a3)
 				move.l	(a3),d0
@@ -238,35 +212,22 @@ MovePlayer:
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
+				sub.l	#PLAYFIELD_START_X,d0
+				sub.l	#PLAYFIELD_START_Y,d1
 				bsr		SetQLixColInfo
 				bra		.EndMovePlayer
 .NoUp:
 
 ; Can go Down ?
-				lea		PlayerMoveDown(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckFillDown
-				clr.b	(a6)
-				bra.s	.MoveDown
-.CheckFillDown:
-				lea		PlayerFillDown(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckMoveDown
-				clr.b	(a6)
-				bra.s	.FillDown
-.CheckMoveDown:
 				btst	#Keybord01_Down,d4
 				beq.s	.NoDown
 				move.l	(a3),d0
 				move.l	4(a3),d1
-				add.l	#2,d1					; 2 to test next collision
+				add.l	#1,d1					; test next collision
 				bsr		PlayerCanMove
 
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceDown
-
-				lea		PlayerMoveDown(pc),a6
-				move.b	#1,(a6)
 .MoveDown:
 				add.l	#1,4(a3) 				; If white we move
 				tst.b	(a5)					; Finish tracing?
@@ -280,8 +241,6 @@ MovePlayer:
 				beq.s	.NoDown
 				tst.w	d2						; empty ?
 				bne.s	.NoDown
-				lea		PlayerFillDown(pc),a6
-				move.b	#1,(a6)
 .FillDown:
 				add.l	#1,4(a3)
 				move.l	(a3),d0
@@ -291,35 +250,22 @@ MovePlayer:
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
+				sub.l	#PLAYFIELD_START_X,d0
+				sub.l	#PLAYFIELD_START_Y,d1
 				bsr		SetQLixColInfo
 				bra		.EndMovePlayer
 .NoDown:
 
 ; Can go Right ?
-				lea		PlayerMoveRight(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckFillRight
-				clr.b	(a6)
-				bra.s	.MoveRight
-.CheckFillRight:
-				lea		PlayerFillRight(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckMoveRight
-				clr.b	(a6)
-				bra.s	.FillRight
-.CheckMoveRight:
 				btst	#Keybord01_Right,d4
 				beq.s	.NoRight
 				move.l	(a3),d0
 				move.l	4(a3),d1
-				add.l	#2,d0					; 2 to test next collision
+				add.l	#1,d0					; test next collision
 				bsr		PlayerCanMove
 
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceRight
-
-				lea		PlayerMoveRight(pc),a6
-				move.b	#1,(a6)
 .MoveRight:
 				add.l	#1,(a3) 				; If white we move
 				tst.b	(a5)					; Finish tracing?
@@ -333,8 +279,6 @@ MovePlayer:
 				beq.s	.NoRight
 				tst.w	d2						; empty ?
 				bne.s	.NoRight
-				lea		PlayerFillRight(pc),a6
-				move.b	#1,(a6)
 .FillRight:
 				add.l	#1,(a3)
 				move.l	(a3),d0
@@ -344,35 +288,22 @@ MovePlayer:
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
+				sub.l	#PLAYFIELD_START_X,d0
+				sub.l	#PLAYFIELD_START_Y,d1
 				bsr		SetQLixColInfo
 				bra		.EndMovePlayer
 .NoRight:
 
 ; Can go Left ?
-				lea		PlayerMoveLeft(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckFillLeft
-				clr.b	(a6)
-				bra.s	.MoveLeft
-.CheckFillLeft:
-				lea		PlayerFillLeft(pc),a6
-				tst.b	(a6)
-				beq.s	.CheckMoveLeft
-				clr.b	(a6)
-				bra.s	.FillLeft
-.CheckMoveLeft:
 				btst	#Keybord01_Left,d4
 				beq.s	.NoLeft
 				move.l	(a3),d0
 				move.l	4(a3),d1
-				sub.l	#2,d0					; 2 to test next collision
+				sub.l	#1,d0					; test next collision
 				bsr		PlayerCanMove
 
 				cmp.w	#1,d2					; can move to ?
 				bne.s	.TestSpaceLeft
-
-				lea		PlayerMoveLeft(pc),a6
-				move.b	#1,(a6)
 .MoveLeft:
 				sub.l	#1,(a3) 				; If white we move
 				tst.b	(a5)					; Finish tracing?
@@ -386,9 +317,8 @@ MovePlayer:
 				beq.s	.NoLeft
 				tst.w	d2						; empty ?
 				bne.s	.NoLeft
-				lea		PlayerFillLeft(pc),a6
-				move.b	#1,(a6)
-.FillLeft:
+
+				.FillLeft:
 				sub.l	#1,(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
@@ -397,6 +327,8 @@ MovePlayer:
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
+				sub.l	#PLAYFIELD_START_X,d0
+				sub.l	#PLAYFIELD_START_Y,d1
 				bsr		SetQLixColInfo
 				bra		.EndMovePlayer
 .NoLeft:
@@ -433,7 +365,15 @@ PlayerCanMove:
 				;DBGBREAK
 
 				sub.w	#PLAYFIELD_START_X,d0
+				bmi.s	.outcoordmove
 				sub.w	#PLAYFIELD_START_Y,d1
+				bmi.s	.outcoordmove
+
+				cmp.w	#191,d0
+				bhi.s	.outcoordmove
+				cmp.w	#191,d1
+				bhi.s	.outcoordmove
+				
 				lea 	QLixCollision(pc),a2
 				move.w	d1,d2
 				lsl.w	#6,d2		; *64
@@ -474,6 +414,8 @@ PlayerCanMove:
 .canfillto:
 				moveq	#0,d2
 				rts				
+.outcoordmove:
+				DBGBREAK
 .cantmoveto:
 				moveq	#2,d2
 				rts				
@@ -487,11 +429,6 @@ FillPlayField:
 				lea		FloodFillingStack,a6
 				lea		FloodFillingStack,a5
 				
-				moveq	#0,d0
-				moveq	#0,d1
-				moveq	#0,d4
-				moveq	#0,d5
-
 ; Coord to start flood scanline filling
 ; First we fill the Qix region
 				lea		QLixCoord(pc),a3
@@ -499,111 +436,112 @@ FillPlayField:
 				asr.l   #8,d0
 				move.l	4(a3),d1
 				asr.l   #8,d1
+
+				sub.w	#PLAYFIELD_START_X,d0
+				bmi		.cantfill
+				sub.w	#PLAYFIELD_START_Y,d1
+				bmi		.cantfill
+
+				cmp.w	#191,d0
+				bhi		.cantfill
+				cmp.w	#191,d1
+				bhi		.cantfill
 				
+				moveq	#COL_INFO_FILLING,d3	; Into a register for optimisation
+
 				move.b	d0,-(a6)				; Save first X
 				move.b	d1,-(a6)				; Save first Y
+				moveq	#0,d4
+				moveq	#0,d5
 
 .loopfilling:
 				cmp.l	a6,a5					; Nothing in the filling stack
 				beq.w	.endfilling
 
-				moveq	#0,d4
-				moveq	#0,d5
 				move.b	(a6)+,d5				; Get Y
 				move.b	(a6)+,d4				; Get X
+
+				lea		QLixCollision(pc),a0
+				add.w	d4,a0		; X
+				move.w	d5,d1
+				lsl.w	#6,d1		; *64
+				move.w	d1,d0
+				add.w	d0,d0		; *128
+				add.w	d1,a0
+				add.w	d0,a0		; *192 (Y)
+				add.w	#1,a0		; for the first -(a0)
+				add.b	#1,d4
+			
 .scanleft:
-				sub.l	#2,d4
-				move.l	d4,d0
-				move.l	d5,d1
-				bsr		GetQLixColInfo
-				cmp.b	#COL_INFO_NOTHING,d2
+				sub.b	#1,d4
+				tst.b	-(a0)					;like cmp.b	#COL_INFO_NOTHING,-(a0)
 				beq.s	.scanleft
-				
-				add.l	#2,d4					; Return to the valid pixel on the right.
+
+				add.b	#1,d4					; Return to the valid pixel on the right.
+				add.l	#1,a0
 				moveq	#0,d6					; Above flag
 				moveq	#0,d7					; Below flag
 .filltotheright:
-				move.l	d4,d0
-				move.l	d5,d1
-				move.b	#COL_INFO_FILLING,d2
-				bsr		SetQLixColInfo
+				move.b	d3,(a0)+				; Set to COL_INFO_FILLING
 
-				move.l	d4,d0
-				move.l	d5,d1
-				sub.l	#2,d1					; Check above.
-				bsr		GetQLixColInfo
-				cmp.b	#COL_INFO_NOTHING,d2
+				tst.b	-192(a0)				; like cmp.b	#COL_INFO_NOTHING,-192(a0)
 				bne.s	.somethingabove
 				tst.b	d6
 				bne.s	.testbelow				; Do not stock new line until we get a new one
 				moveq	#1,d6					; Set above flag
 				move.b	d4,-(a6)
-				move.b	d5,-(a6)				; Push next line to filling at previous pixel
-				sub.b	#2,(a6)
-				jmp		.testbelow
+				move.b	d5,d1
+				sub.b	#1,d1
+				move.b	d1,-(a6)				; Push next line to filling at previous pixel
+				bra.s	.testbelow
 .somethingabove:
 				moveq	#0,d6					; Nothing above, reset above flag
 .testbelow:
-
-				move.l	d4,d0
-				move.l	d5,d1
-				add.l	#2,d1					; Check below.
-				bsr		GetQLixColInfo
-				cmp.b	#COL_INFO_NOTHING,d2
+				tst.b	192(a0)					; like cmp.b	#COL_INFO_NOTHING,192(a0)
 				bne.s	.somethingbelow
 				tst.b	d7
 				bne.s	.fillnext				; Do not stock new line until we get a new one
 				moveq	#1,d7					; Set above flag
 				move.b	d4,-(a6)
-				move.b	d5,-(a6)				; Push next line to filling at previous pixel
-				add.b	#2,(a6)
-				jmp		.fillnext
+				move.b	d5,d1
+				add.b	#1,d1
+				move.b	d1,-(a6)				; Push next line to filling at previous pixel
+				bra.s	.fillnext
 .somethingbelow:
 				moveq	#0,d7					; Nothing below, reset below flag
 .fillnext:
 
-				add.l	#2,d4					; Fill next pixel
-				move.l	d4,d0
-				move.l	d5,d1
-				bsr		GetQLixColInfo
-				cmp.b	#COL_INFO_NOTHING,d2
+				add.b	#1,d4					; Fill next pixel
+				tst.b	(a0)					; like cmp.b	#COL_INFO_NOTHING,(a0)
 				beq.s	.filltotheright
-				
-				jmp		.loopfilling
+
+				bra		.loopfilling
 				
 .endfilling:
 
+				;bsr		DebugDisplayQLixColInfo
 
 ; Now we fill the other part and clean the qix region
 				;DBGBREAK
+				lea		QLixCollision(pc),a0
 
-				moveq	#0,d5			; Y screen
+				moveq	#0,d5			; Y col
 				
 				move.l	#192-1,d7		; Nb lines
 .loopY:
-				moveq	#0,d4			; X screen
+				moveq	#0,d4			; X col
 				move.l	#192-1,d6		; Nb cols
-
-				lea		QLixCollision(pc),a0
-				move.w	d5,d1
-				add.w	d4,a0		; X
-				move.w	d1,d0
-				lsl.w	#7,d1		; *128
-				lsl.w	#6,d0		; *64
-				add.w	d1,a0
-				add.w	d0,a0		; *192 (Y)
-
 .loopX:
 				move.b	(a0)+,d0
 
-				cmp.b	#COL_INFO_NOTHING,d0		; empty place become a wall
-				beq.s	.tobefilled
-
-				cmp.b	#COL_INFO_TRACING,d0		; player tracing become a wall
-				beq.s	.tobefilled
-
-				cmp.b	#COL_INFO_FILLING,d0
+				cmp.b	#COL_INFO_FILLING,d0		; COL_INFO_FILLING ?
 				beq.s	.isfilling
+
+				tst.b	d0							; like cmp.b	#COL_INFO_NOTHING,d0		; empty place become a wall
+				beq.s	.tobefilled
+
+				cmp.b	#COL_INFO_TRACING,d0		; COL_INFO_TRACING ? player tracing become a wall
+				beq.s	.tobefilled
 
 				bra.s	.doloop
 
@@ -616,47 +554,29 @@ FillPlayField:
 				move.w	d5,d1
 				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelWhite
-				add.w	#1,d0
-				bsr		PlotPixelWhite
-				move.w	d4,d0
-				add.w	#1,d1
-				bsr		PlotPixelWhite
-				add.w	#1,d0
-				bsr		PlotPixelWhite
 
 				move.l	#$28000,a4
-				move.w	d4,d0
-				move.w	d5,d1
 				move.w	d4,d0
 				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
 				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelWhite
-				add.w	#1,d0
-				bsr		PlotPixelWhite
-				move.w	d4,d0
-				add.w	#1,d1
-				bsr		PlotPixelWhite
-				add.w	#1,d0
-				bsr		PlotPixelWhite
 				bra.s	.doloop
 
 .isfilling:
-				move.b	#COL_INFO_NOTHING,-1(a0)	; filled area become empty
+				clr.b	-1(a0)					; like move.b	#COL_INFO_NOTHING,-1(a0)	; filled area become empty
 				
 .doloop:				
 				add.w	#1,d4
 				dbra	d6,.loopX
 
-                ;movem.l d0-d7/a0-a6,-(sp)
-				;bsr		ClearScreen
-				;bsr		DebugDisplayQLixColInfo
-                ;movem.l (sp)+,d0-d7/a0-a6
-				;DBGBREAK
-
 				add.w	#1,d5
 				dbra	d7,.loopY
+                movem.l (sp)+,d0-d7/a0-a6
+				rts
 
+.cantfill:
+				DBGBREAK
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -774,7 +694,7 @@ MoveQLix:
 				;asr.l	#1,d1
 				;muls	#2,d1
 				lsl.l	#1,d1
-				;add.l	d1,(a4)
+				add.l	d1,(a4)
 
 				tst.w	d6
 				bne.s	.nodiraddy					; No add (do not change direction) if colliding recently
@@ -788,7 +708,7 @@ MoveQLix:
 				;asr.l	#1,d1
 				;muls	#2,d1
 				lsl.l	#1,d1
-				;add.l	d1,4(a4)
+				sub.l	d1,4(a4)
 				
 ; Draw the QLix
 			; Erase previous line 1.
@@ -924,6 +844,16 @@ MoveQLix:
 ; d2 : 0 (nothing), 1 (wall), 2 (tracing), 3-FF (filling)
 ;=============================================================================
 SetQLixColInfo:
+				cmp.w	#0,d0
+				bmi.s	ErrorColCoord
+				cmp.w	#0,d1
+				bmi.s	ErrorColCoord
+
+				cmp.w	#191,d0
+				bhi.s	ErrorColCoord
+				cmp.w	#191,d1
+				bhi.s	ErrorColCoord
+
 				lea		QLixCollision(pc),a0
 				add.w	d0,a0		; X
 				move.w	d1,d0
@@ -936,6 +866,16 @@ SetQLixColInfo:
 				rts
 
 GetQLixColInfo:
+				cmp.w	#0,d0
+				bmi.s	ErrorColCoord
+				cmp.w	#0,d1
+				bmi.s	ErrorColCoord
+
+				cmp.w	#191,d0
+				bhi.s	ErrorColCoord
+				cmp.w	#191,d1
+				bhi.s	ErrorColCoord
+
 				lea		QLixCollision(pc),a0
 				add.w	d0,a0		; X
 				move.w	d1,d0
@@ -947,6 +887,11 @@ GetQLixColInfo:
 				move.b	(a0),d2		; We get the info
 				rts
 
+ErrorColCoord:
+				DBGBREAK
+				move.b	#COL_INFO_WALL,d2		; We get the info
+				rts
+
 ; For debug purpose only
 	macro PlotDebug
 				;DBGBREAK
@@ -955,6 +900,7 @@ GetQLixColInfo:
 				bsr		PlotPixel\1
 	endm
 DebugDisplayQLixColInfo:
+				movem.l d0-d7/a0-a6,-(sp)
 				lea		QLixCollision(pc),a0
 				lea		ScreenBase(pc),a4
 				move.l	(a4),a4
@@ -992,6 +938,7 @@ DebugDisplayQLixColInfo:
 				dbra	d6,.loopX
 				add.w	#1,d5
 				dbra	d7,.loopY
+				movem.l (sp)+,d0-d7/a0-a6
 				rts
 
 ;=============================================================================
@@ -1022,19 +969,22 @@ ResetQLix:
 				move.b	#COL_INFO_WALL,(a0)+
 				dbra	d1,.clearcol
 
-				moveq	#1,d5		; Y screen
-				move.l	#190-1,d7	; Nb lines
+				lea		QLixCollision(pc),a0
+
+COL_BORDER_SIZE equ 3
+				moveq	#COL_BORDER_SIZE,d5		; Y screen
+				lea		192*COL_BORDER_SIZE+COL_BORDER_SIZE(a0),a0
+				move.l	#192-2*COL_BORDER_SIZE-1,d7	; Nb lines
 .loopY:
-				moveq	#1,d4		; X screen
-				move.l	#190-1,d6	; Nb cols
+				moveq	#COL_BORDER_SIZE,d4		; X screen
+				move.l	#192-2*COL_BORDER_SIZE-1,d6	; Nb cols
 .loopX:
-				move.w	d4,d0
-				move.w	d5,d1
-				move.w	#COL_INFO_NOTHING,d2
-				bsr		SetQLixColInfo
+				move.b	#COL_INFO_NOTHING,(a0)+
 
 				add.w	#1,d4
 				dbra	d6,.loopX
+
+				lea		2*COL_BORDER_SIZE(a0),a0
 
 				add.w	#1,d5
 				dbra	d7,.loopY
@@ -1042,22 +992,14 @@ ResetQLix:
 ; Init player vars
 				lea		PlayerCoord(pc),a0
 				move.l	#128,(a0)
-				move.l	#239,4(a0)
+				move.l	#240-COL_BORDER_SIZE,4(a0)
 				move.l	#128,8(a0)
-				move.l	#239,12(a0)
+				move.l	#240-COL_BORDER_SIZE,12(a0)
 				lea		PlayerCoordStartTracing(pc),a0
 				move.l	#128,(a0)
-				move.l	#239,4(a0)
+				move.l	#240-COL_BORDER_SIZE,4(a0)
 
 				CleanVarB PlayerIsTracing,a0
-				CleanVarB PlayerMoveUp,a0
-				CleanVarB PlayerMoveDown,a0
-				CleanVarB PlayerMoveLeft,a0
-				CleanVarB PlayerMoveRight,a0
-				CleanVarB PlayerFillUp,a0
-				CleanVarB PlayerFillDown,a0
-				CleanVarB PlayerFillLeft,a0
-				CleanVarB PlayerFillRight,a0
 
 ; Init QLix vars:
 				lea		QLixCoord(pc),a0
@@ -1104,7 +1046,7 @@ DisplayText:
 .next:
 				add.l	#8,d5				; next char 8 pixels to the right
 				
-				jmp		.loop
+				bra.s	.loop
 
 .endoftext:
 				rts

@@ -7,7 +7,7 @@
 	endm
 
 	macro CleanVarB
-		lea		\1(pc),\2
+		lea		\1(pc),\2 
 		clr.b	(\2)
 	endm
 	
@@ -18,7 +18,11 @@
 	endm
 
 	macro DBGBREAK
+		nop
+		nop
 		dc.w $AADF
+		nop
+		nop
 	endm
 
 	macro DBGLOG
