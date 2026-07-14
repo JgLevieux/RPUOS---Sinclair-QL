@@ -11,6 +11,16 @@
 		clr.b	(\2)
 	endm
 	
+	macro CleanVarW
+		lea		\1(pc),\2 
+		clr.w	(\2)
+	endm
+
+	macro CleanVarL
+		lea		\1(pc),\2 
+		clr.L	(\2)
+	endm
+
 	macro DBGENABLE
 		moveq #5,d1
 		moveq #-26,d0

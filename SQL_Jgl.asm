@@ -95,7 +95,40 @@ MainLoop:
 .swapscreen2:
 			endif
 
-				bsr 	ReadControl01
+				bsr 	ReadKeyboard
+
+				lea		Keyboard(pc),a1
+
+				btst	#Keyboard03_S,3(a1)
+				beq.s	.NoKeyS
+				bset	#Keyboard01_Down,1(a1)
+.NoKeyS:
+				btst	#Keyboard04_D,4(a1)
+				beq.s	.NoKeyD
+				bset	#Keyboard01_Right,1(a1)
+.NoKeyD:
+				btst	#Keyboard04_A,4(a1)
+				beq.s	.NoKeyA
+				bset	#Keyboard01_Left,1(a1)
+.NoKeyA:
+				btst	#Keyboard06_Q,6(a1)
+				beq.s	.NoKeyQ
+				bset	#Keyboard01_Left,1(a1)
+.NoKeyQ:
+				btst	#Keyboard05_W,5(a1)
+				beq.s	.NoKeyW
+				bset	#Keyboard01_Up,1(a1)
+.NoKeyW:
+				btst	#Keyboard02_Z,2(a1)
+				beq.s	.NoKeyZ
+				bset	#Keyboard01_Up,1(a1)
+.NoKeyZ:
+
+
+				btst	#Keyboard01_ESC,1(a1)
+				beq.s	.NoESC
+				bsr		ResetQLix
+.NoESC:
 
 				lea     NbLoop(pc),a0
 				add.l	#1,(a0)
@@ -112,9 +145,9 @@ MainLoop:
 				bsr		MovePlayer
 				bsr		MoveQLix
 
-				lea		Keyboard01(pc),a1
-				move.b	(a1),d4					; d4 = bits clavier
-				btst	#Keybord01_Enter,d4		; Press space to move while tracing
+				lea		Keyboard(pc),a1
+				move.b	1(a1),d4					; d4 = bits clavier
+				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
 				;DBGBREAK
 				bsr		ClearScreen
@@ -125,7 +158,7 @@ MainLoop:
 			ifd TIMER_MODE
 				DisplayOffForProfiling
 			endif
-				bra.s	MainLoop
+				bra		MainLoop
 
                 rts
 
@@ -145,6 +178,8 @@ PlayerCoordStartTracing:	dc.l	0,0
 	even
 PlayerIsTracing:	dc.b 0
 	even
+FillingCounter:		dc.w 0
+	even
 FloodFillingStackBottom:
 				dcb.b	2048,0
 FloodFillingStack:
@@ -156,6 +191,7 @@ NbFrameLastCollide: dc.w 0
 ;=============================================================================
 MovePlayer:
 				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
+				lea		PlayerCoordStartTracing(pc),a6
 
 ; Erase previous player
 ; TODO - erase with position on frame n-2
@@ -169,15 +205,15 @@ MovePlayer:
 				bsr 	CleanSprite8x8Shifted
 
 ; Keyboard & collisions
-				lea		Keyboard01(pc),a1
-				move.b	(a1),d4					; d4 = bits clavier
+				lea		Keyboard(pc),a1
+				move.b	1(a1),d4					; d4 = bits clavier
 				move.l	#$28000,a4
 				moveq	#0,d3
 
 				lea		PlayerIsTracing(pc),a5
 
 ; Can go Up ?
-				btst	#Keybord01_Up,d4
+				btst	#Keyboard01_Up,d4
 				beq.s	.NoUp
 				move.l	(a3),d0
 				move.l	4(a3),d1
@@ -195,7 +231,7 @@ MovePlayer:
 				
 				bra		.EndMovePlayer
 .TestSpaceUp:
-				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				btst	#Keyboard01_Space,d4		; Press space to move while tracing
 				beq.s	.NoUp
 				tst.w	d2						; empty ?
 				bne.s	.NoUp
@@ -203,6 +239,13 @@ MovePlayer:
 				sub.l	#1,4(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
+
+				tst.b	(a5)					; Start tracing?
+				bne.s	.NotStartTracingUp
+				move.l	d0,(a6)
+				move.l	d1,4(a6)
+				add.l	#1,4(a6)
+.NotStartTracingUp:
 				move.b	#1,(a5)					; Tracing flag
 				bsr		PlotPixelRed
 				move.l	(a3),d0
@@ -215,7 +258,7 @@ MovePlayer:
 .NoUp:
 
 ; Can go Down ?
-				btst	#Keybord01_Down,d4
+				btst	#Keyboard01_Down,d4
 				beq.s	.NoDown
 				move.l	(a3),d0
 				move.l	4(a3),d1
@@ -233,7 +276,7 @@ MovePlayer:
 				
 				bra		.EndMovePlayer
 .TestSpaceDown:
-				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				btst	#Keyboard01_Space,d4		; Press space to move while tracing
 				beq.s	.NoDown
 				tst.w	d2						; empty ?
 				bne.s	.NoDown
@@ -241,6 +284,12 @@ MovePlayer:
 				add.l	#1,4(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
+				tst.b	(a5)					; Start tracing?
+				bne.s	.NotStartTracingDown
+				move.l	d0,(a6)
+				move.l	d1,4(a6)
+				sub.l	#1,4(a6)
+.NotStartTracingDown:
 				move.b	#1,(a5)					; Tracing flag
 				bsr		PlotPixelRed
 				move.l	(a3),d0
@@ -253,7 +302,7 @@ MovePlayer:
 .NoDown:
 
 ; Can go Right ?
-				btst	#Keybord01_Right,d4
+				btst	#Keyboard01_Right,d4
 				beq.s	.NoRight
 				move.l	(a3),d0
 				move.l	4(a3),d1
@@ -271,7 +320,7 @@ MovePlayer:
 				
 				bra		.EndMovePlayer
 .TestSpaceRight:
-				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				btst	#Keyboard01_Space,d4		; Press space to move while tracing
 				beq.s	.NoRight
 				tst.w	d2						; empty ?
 				bne.s	.NoRight
@@ -279,6 +328,12 @@ MovePlayer:
 				add.l	#1,(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
+				tst.b	(a5)					; Start tracing?
+				bne.s	.NotStartTracingRight
+				move.l	d0,(a6)
+				move.l	d1,4(a6)
+				sub.l	#1,(a6)
+.NotStartTracingRight:
 				move.b	#1,(a5)					; Tracing flag
 				bsr		PlotPixelRed
 				move.l	(a3),d0
@@ -291,7 +346,7 @@ MovePlayer:
 .NoRight:
 
 ; Can go Left ?
-				btst	#Keybord01_Left,d4
+				btst	#Keyboard01_Left,d4
 				beq.s	.NoLeft
 				move.l	(a3),d0
 				move.l	4(a3),d1
@@ -309,7 +364,7 @@ MovePlayer:
 				
 				bra		.EndMovePlayer
 .TestSpaceLeft:
-				btst	#Keybord01_Space,d4		; Press space to move while tracing
+				btst	#Keyboard01_Space,d4		; Press space to move while tracing
 				beq.s	.NoLeft
 				tst.w	d2						; empty ?
 				bne.s	.NoLeft
@@ -318,6 +373,12 @@ MovePlayer:
 				sub.l	#1,(a3)
 				move.l	(a3),d0
 				move.l	4(a3),d1
+				tst.b	(a5)					; Start tracing?
+				bne.s	.NotStartTracingLeft
+				move.l	d0,(a6)
+				move.l	d1,4(a6)
+				add.l	#1,(a6)
+.NotStartTracingLeft:
 				move.b	#1,(a5)					; Tracing flag
 				bsr		PlotPixelRed
 				move.l	(a3),d0
@@ -1045,6 +1106,7 @@ COL_BORDER_SIZE equ 3
 				move.l	#240-COL_BORDER_SIZE,4(a0)
 
 				CleanVarB PlayerIsTracing,a0
+				CleanVarW FillingCounter,a0
 
 ; Init QLix vars:
 				lea		QLixCoord(pc),a0

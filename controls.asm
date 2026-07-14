@@ -1,71 +1,51 @@
 
-Keybord01_Enter		equ		5
-Keybord01_Space		equ		4
-Keybord01_Right		equ		3
-Keybord01_Left		equ		2
-Keybord01_Down		equ		1
-Keybord01_Up		equ		0
+Keyboard01_Down		equ		7
+Keyboard01_Space	equ		6
+Keyboard01_Right	equ		4
+Keyboard01_ESC		equ		3
+Keyboard01_Up		equ		2
+Keyboard01_Left		equ		1
+Keyboard01_Enter	equ		0
+
+Keyboard02_Z		equ		1
+Keyboard03_S		equ		3
+Keyboard04_D		equ		6
+Keyboard04_A		equ		4
+Keyboard05_W		equ		1
+Keyboard06_Q		equ		3
 
 ;=============================================================================
-; Read keyboard for : Enter, Space, Right, Left, Down, Up
-; Input : -
-; Output : Fill Keyboard01 --ESRLDU
-; Destroy : d0
-;
+; Read keyboard
 ; Note : From sample from https://www.chibiakumas.com/68000/sinclairql.php
 ;=============================================================================
-ReadControl01:
+ReadKeyboard:
 				movem.l	d1-d7/a0-a6,-(sp)
-				;movem.l	d2-d7/a3,-(sp) ; just what is changed in trap #1 ?
-				
-				lea			QLJoycommand01,a3
+
+				lea			Keyboard(pc),a4
+				moveq		#0,d3				; Line Number
+				moveq		#7,d7				; Nb line
+
+				lea			QLJoycommand(pc),a3
+.ReadLine:
+				move.b		d3,6(a3)	; Line in d3
 				move.b		#$11,d0		; Command 17
-				Trap		#1			; Send Keyrequest to the IO CPU
-										; Returns row in D1
+				trap		#1			; Send Keyrequest to the IO CPU
+
+				move.b		d1,(a4,d3.w)
 				
-				clr.l		d0		;D0 is our result
-				
-				move.b		d1,d2
-				roxr.b		#4,d2	; ESC
-				roxl.b		#1,d0	;Start (4)
-				
-				roxr.b		#2,d2	; \ 
-				roxl.b		#1,d0	;Fire 3 (6)
-				
-				move.b		d1,d2
-				roxr.b		#1,d2	; Enter (1)
-				roxl.b		#1,d0	;Fire 2
-				
-				roxr.b		#6,d2	;Space (7)
-				roxl.b		#1,d0
-				
-				move.b		d1,d2
-				roxr.b		#5,d2	;Right (5)
-				roxl.b		#1,d0
-				
-				move.b		d1,d2
-				roxr.b		#2,d2	;Left (2)
-				roxl.b		#1,d0
-				
-				roxr.b		#6,d2	;Down (8)
-				roxl.b		#1,d0
-				
-				move.b		d1,d2
-				roxr.b		#3,d2	;Up
-				roxl.b		#1,d0
-				
-				lea			Keyboard01(pc),a0
-				move.b		d0,(a0)
-				
+				add.b		#1,d3		; Next Line
+				dbra		d7,.ReadLine
+
 				movem.l		(sp)+,d1-d7/a0-a6
 
 				rts
 	even
-Keyboard01:	dc.b	0
+Keyboard:	dcb.b	8
 	even
-QLJoycommand01:
+
+QLJoycommand:
 	dc.b $09	;0 - Command
-	dc.b $01	;1 - parameter bytes
+	dc.b $01	;
 	dc.l 0		;2345 - send option (%00=low nibble)
 	dc.b 1		;6 - Parameter: Row
 	dc.b 2		;7 - length of reply (%10=8 bits)
