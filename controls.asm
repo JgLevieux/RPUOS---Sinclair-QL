@@ -19,10 +19,10 @@ Keyboard06_Q		equ		3
 ; Note : From sample from https://www.chibiakumas.com/68000/sinclairql.php
 ;=============================================================================
 ReadKeyboard:
-				movem.l	d1-d7/a0-a6,-(sp)
+				;movem.l	d1-d7/a0-a6,-(sp)
 
 				lea			Keyboard(pc),a4
-				moveq		#0,d3				; Line Number
+				moveq		#1,d3				; Line Number
 				moveq		#7,d7				; Nb line
 
 				lea			QLJoycommand(pc),a3
@@ -34,9 +34,9 @@ ReadKeyboard:
 				move.b		d1,(a4,d3.w)
 				
 				add.b		#1,d3		; Next Line
-				dbra		d7,.ReadLine
+				;dbra		d7,.ReadLine
 
-				movem.l		(sp)+,d1-d7/a0-a6
+				;movem.l		(sp)+,d1-d7/a0-a6
 
 				rts
 	even

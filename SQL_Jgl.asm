@@ -70,6 +70,10 @@ Start:
 MainLoop:
 			; WaitVBlank
 				jsr		WaitVBlank
+				
+			ifd TIMER_MODE
+				move.b	#ScreenMode01,$18063			; Display screen 1
+			endif
 
 			; Double buffering
 			ifd DOUBLE_BUFFERING				
@@ -142,19 +146,35 @@ MainLoop:
 			endif
 
 				;bsr		ClearScreen
+				lea		Ennemy01Coord(pc),a6
+				bsr		MoveEnnemy
+
 				bsr		MovePlayer
+
 				bsr		MoveQLix
 
 				lea		Keyboard(pc),a1
 				move.b	1(a1),d4					; d4 = bits clavier
 				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
-				;DBGBREAK
-				bsr		ClearScreen
-				bsr		DebugDisplayQLixColInfo
+				DBGBREAK
+				;bsr		ClearScreen
+				;bsr		DebugDisplayQLixColInfo
 .nobreakpoint:
-			
-			
+
+
+				lea		Text000(pc),a0
+				lea		FillingCounter(pc),a6
+				move.l	(a6),d0
+				lsr.l	#8,d0
+				lsr.l	#8,d0
+				bsr		NumberToAscii_000
+				
+				move.l	#19*8,d0
+				move.l	#20,d1
+				bsr		DisplayText
+
+
 			ifd TIMER_MODE
 				DisplayOffForProfiling
 			endif
@@ -171,21 +191,101 @@ MainLoop:
 ;=============================================================================
 
 	even
-
 PlayerCoord:	dc.l	0,0
 	even
 PlayerCoordStartTracing:	dc.l	0,0				
 	even
 PlayerIsTracing:	dc.b 0
 	even
-FillingCounter:		dc.w 0
+FillingCounter:		dc.l 0
 	even
 FloodFillingStackBottom:
 				dcb.b	2048,0
 FloodFillingStack:
 	even
-NbFrameLastCollide: dc.w 0
+
+Ennemy01Coord:	dc.l	0,0
 	even
+
+;=============================================================================
+; Move one ennemy
+; Input : a6 - ennemy info
+;=============================================================================
+MoveEnnemy:
+
+; Erase previous ennemy
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	#$28000,a1
+				move.l	(a6),d0
+				sub.l	#4,d0
+				move.l	4(a6),d1
+				sub.l	#4,d1
+				bsr 	CleanSprite8x8Shifted
+
+; Move ennemy
+.testright:
+				move.l	(a6),d0
+				move.l	4(a6),d1
+				add.l	#1,d0
+				bsr		PlayerCanMove ; d0-d2,a2
+				cmp.b	#1,d2
+				bne.s	.testdown
+				add.l	#1,(a6)
+				bra.s	.fintestmove
+.testdown:
+				move.l	(a6),d0
+				move.l	4(a6),d1
+				add.l	#1,d1
+				bsr		PlayerCanMove ; d0-d2,a2
+				cmp.b	#1,d2
+				bne.s	.testleft
+				add.l	#1,4(a6)
+				bra.s	.fintestmove
+.testleft:
+				move.l	(a6),d0
+				move.l	4(a6),d1
+				sub.l	#1,d0
+				bsr		PlayerCanMove ; d0-d2,a2
+				cmp.b	#1,d2
+				bne.s	.testup
+				sub.l	#1,(a6)
+				bra.s	.fintestmove
+.testup:
+				move.l	(a6),d0
+				move.l	4(a6),d1
+				sub.l	#1,d1
+				bsr		PlayerCanMove ; d0-d2,a2
+				cmp.b	#1,d2
+				bne.s	.fintestmove
+				sub.l	#1,4(a6)
+
+.fintestmove:
+				
+; Draw ennemies
+				lea		SpriteEnnemy_01,a1
+
+				lea     NbLoop(pc),a0
+                move.l  (a0),d0
+				and.l	#%1100,d0
+
+				lsr.l	#2,d0
+				lsl.l	#7,d0
+				move.l	d0,d1
+				add.l	d1,d1
+				add.l	d0,a1
+				add.l	d1,a1
+
+				move.l	(a6),d0
+				sub.l	#4,d0
+				move.l	4(a6),d1
+				sub.l	#4,d1
+
+				lea		ScreenBase,a0
+				move.l	(a0),a0
+				bsr		DisplaySprite8x8MaskedShifted
+				rts
+	
 ;=============================================================================
 ; Move Player
 ;=============================================================================
@@ -194,7 +294,6 @@ MovePlayer:
 				lea		PlayerCoordStartTracing(pc),a6
 
 ; Erase previous player
-; TODO - erase with position on frame n-2
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				move.l	#$28000,a1
@@ -392,15 +491,16 @@ MovePlayer:
 
 .EndMovePlayer:
 ; Draw player
-				lea		ScreenBase,a0
-				move.l	(a0),a0
+
 				lea		SpritePlayer,a1
 				move.l	(a3),d0
 				sub.l	#3,d0
 				move.l	4(a3),d1
 				sub.l	#3,d1
-				bsr		DisplaySprite8x8MaskedShifted
 
+				lea		ScreenBase,a0
+				move.l	(a0),a0
+				bsr		DisplaySprite8x8MaskedShifted
 				rts
 
 ;=============================================================================
@@ -409,7 +509,7 @@ MovePlayer:
 ; 		d0 = X (0-191)
 ;		d1 = Y (0-191)
 ; Output : -
-;		d2 = 1 - can move to / 0 = can fill to / 2 - can't move to
+;		d2.l = 1 - can move to / 0 = can fill to / 2 - can't move to
 ; Destroy : 
 ;		d0, d1, d2
 ;		a2
@@ -585,6 +685,7 @@ FillPlayField:
 ; Now we fill the other part and clean the qix region
 				;DBGBREAK
 				lea		QLixCollision(pc),a0
+				lea		FillingCounter(pc),a6
 
 				moveq	#0,d5			; Y col
 				
@@ -596,7 +697,7 @@ FillPlayField:
 				move.b	(a0)+,d0
 
 				cmp.b	#COL_INFO_FILLING,d0		; COL_INFO_FILLING ?
-				beq.s	.isfilling
+				beq		.isfilling
 
 				tst.b	d0							; like cmp.b	#COL_INFO_NOTHING,d0		; empty place become a wall
 				beq.s	.tobefilledinside
@@ -608,6 +709,8 @@ FillPlayField:
 
 .tobefilledinside:
 				move.b	#COL_INFO_WALL,-1(a0)
+
+				add.l	#185,(a6)						; Inc filling counter
 
 				lea		$20000,a4
 				move.w	d4,d0
@@ -626,6 +729,8 @@ FillPlayField:
 
 .tobefilledborder:
 				move.b	#COL_INFO_WALL,-1(a0)
+
+				add.l	#185,(a6)						; Inc filling counter
 
 				lea		$20000,a4
 				move.w	d4,d0
@@ -1106,8 +1211,14 @@ COL_BORDER_SIZE equ 3
 				move.l	#240-COL_BORDER_SIZE,4(a0)
 
 				CleanVarB PlayerIsTracing,a0
-				CleanVarW FillingCounter,a0
+				CleanVarL FillingCounter,a0
 
+; Init ennemies
+				lea		Ennemy01Coord(pc),a0
+				move.l	#128,(a0)
+				move.l	#47+COL_BORDER_SIZE,4(a0)
+
+				
 ; Init QLix vars:
 				lea		QLixCoord(pc),a0
 				move.l	#128*256,(a0)
@@ -1119,7 +1230,12 @@ COL_BORDER_SIZE equ 3
 				move.l	#132*256,24(a0)
 				move.l	#132*256,28(a0)			; 24:8 format (*256)
 
-				
+; Display static texts
+				lea		Text_Score_Life(pc),a0
+				move.l	#8*5,d0
+				move.l	#243,d1
+				bsr		DisplayText
+
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -1133,8 +1249,6 @@ COL_BORDER_SIZE equ 3
 ; Destroy :
 ;		d0, d1, d2, d5, d6
 ;		a0, a1
-;
-; TODO : 
 ;=============================================================================
 DisplayText:
 				move.l	a0,a6				; save text adr
@@ -1164,27 +1278,63 @@ DisplayText:
 .endoftext:
 				rts
 
+;=============================================================================
+; Number to Ascii (000-999)
+; Input : -
+;		d0.w = number
+;		a0 = text address to fill
+; Destroy :
+;		d0, d1, d2, d5, d6
+;		a0, a1
+;=============================================================================
+NumberToAscii_000:
+				moveq	#0,d1
+.hundred:
+				add.w	#1,d1
+				sub.w	#100,d0
+				bge.s	.hundred
+
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,(a0)
+				add.w	#100,d0
+				
+				moveq	#0,d1
+.ten:
+				add.w	#1,d1
+				sub.w	#10,d0
+				bge.s	.ten
+
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,1(a0)
+				add.w	#10,d0
+
+				add.b	#"0",d0
+				move.b	d0,2(a0)
+				rts
 
 ;=============================================================================
 ; Sound TEST
 ;=============================================================================
 ; Note : From sample from https://www.chibiakumas.com/68000/sinclairql.php
-
+SoundTest:
 				lea		SoundCommand,a3   ; These three lines
 				move.b	#$11,d0    ; Stop the note
 				trap	#1
+				rts
 	even
 SoundCommand:
-        dc.b    $A                ; Command
-        dc.b    8                ; Bytes to follow
-        dc.l    $0000aaaa       ; Byte Parameters
-        dc.b    100               ; Pitch 1
-        dc.b    0               ; Pitch 2
-        dc.w    200                ; interval between steps (0,0),
-        dc.w     $FFFF             ; Duration (65535)
-        dc.b    0                ; step in pitch (4bit) / wrap (4bit)
-        dc.b    0                 ; randomness of step (4bit) / fuzziness (4bit)
-        dc.b    1               ; No return parameters       
+        dc.b    $A			; Command
+        dc.b    8           ; Bytes to follow
+        dc.l    $0000aaaa   ; Byte Parameters
+        dc.b    100         ; Pitch 1
+        dc.b    0           ; Pitch 2
+        dc.w    200         ; interval between steps (0,0),
+        dc.w     $FFFF      ; Duration (65535)
+        dc.b    0           ; step in pitch (4bit) / wrap (4bit)
+        dc.b    0           ; randomness of step (4bit) / fuzziness (4bit)
+        dc.b    1           ; No return parameters       
 	even
 
 ;=============================================================================
@@ -1516,13 +1666,8 @@ BufferNum:		dc.w	0
 	even
 NbLoop:			dc.l	0
 	even
-TextLeft:		dc.b	"LEFT",0
-	even
-TextRight:		dc.b	"RIGHT",0
-	even
-TextUp:			dc.b	"UP",0
-	even
-TextDown:		dc.b	"DOWN",0
+Text000:		dc.b	"000%",0
+Text_Score_Life:		dc.b	"SCORE:000000 ",0
 	even
 
 SinTable:
@@ -1545,6 +1690,14 @@ SinTable:
 	even
 
 SpritePlayer:	incbin		"Data\QLixPlayer.bin"
+	even
+SpriteEnnemy_01:	incbin		"Data\QLixEnnemy01.bin"
+	even
+SpriteEnnemy_02:	incbin		"Data\QLixEnnemy02.bin"
+	even
+SpriteEnnemy_03:	incbin		"Data\QLixEnnemy03.bin"
+	even
+SpriteEnnemy_04:	incbin		"Data\QLixEnnemy04.bin"
 	even
 Font:			incbin 		"Data\Font8x8.bin"				
 	even
