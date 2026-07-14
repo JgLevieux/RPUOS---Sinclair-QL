@@ -31,6 +31,10 @@ ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
 
+; TODO :
+; - Check if the player is not in a valid zone after a fill and set him at a safe place.
+
+
 ; =============================================================================
 
 Start:
@@ -127,22 +131,14 @@ MainLoop:
 
 ;=============================================================================
 	include "controls.asm"
+	include "random.asm"
 	include "unzx0_68000.asm"
 	include "PlotPixel.asm"
 	include "Lines.asm"
 ;=============================================================================
 
 	even
-QLixCoord:		dc.l	192*256,192*256
-	even
-QLixRotation:	dc.w	128
-	even
-QLixDir:		dc.w	0,64
-	even
 
-QLixPreviousLines:
-				dcb.w	2*2*2*2,0	; 2 lines (from Qix pos to edges) * 2 coords (X,Y) * 2 points (for 1 lines) * 2 (frame n-1 & frame n-2)
-	even
 PlayerCoord:	dc.l	0,0
 	even
 PlayerCoordStartTracing:	dc.l	0,0				
@@ -469,7 +465,10 @@ FillPlayField:
 				add.w	d0,d0		; *128
 				add.w	d1,a0
 				add.w	d0,a0		; *192 (Y)
-				add.w	#1,a0		; for the first -(a0)
+
+				;DBGBREAK
+
+				add.l	#1,a0		; for the first -(a0)
 				add.b	#1,d4
 			
 .scanleft:
@@ -479,12 +478,13 @@ FillPlayField:
 
 				add.b	#1,d4					; Return to the valid pixel on the right.
 				add.l	#1,a0
+
 				moveq	#0,d6					; Above flag
 				moveq	#0,d7					; Below flag
 .filltotheright:
 				move.b	d3,(a0)+				; Set to COL_INFO_FILLING
 
-				tst.b	-192(a0)				; like cmp.b	#COL_INFO_NOTHING,-192(a0)
+				tst.b	-193(a0)				; like cmp.b	#COL_INFO_NOTHING,-192(a0)
 				bne.s	.somethingabove
 				tst.b	d6
 				bne.s	.testbelow				; Do not stock new line until we get a new one
@@ -497,7 +497,7 @@ FillPlayField:
 .somethingabove:
 				moveq	#0,d6					; Nothing above, reset above flag
 .testbelow:
-				tst.b	192(a0)					; like cmp.b	#COL_INFO_NOTHING,192(a0)
+				tst.b	191(a0)					; like cmp.b	#COL_INFO_NOTHING,192(a0)
 				bne.s	.somethingbelow
 				tst.b	d7
 				bne.s	.fillnext				; Do not stock new line until we get a new one
@@ -538,14 +538,32 @@ FillPlayField:
 				beq.s	.isfilling
 
 				tst.b	d0							; like cmp.b	#COL_INFO_NOTHING,d0		; empty place become a wall
-				beq.s	.tobefilled
+				beq.s	.tobefilledinside
 
 				cmp.b	#COL_INFO_TRACING,d0		; COL_INFO_TRACING ? player tracing become a wall
-				beq.s	.tobefilled
+				beq.s	.tobefilledborder
 
 				bra.s	.doloop
 
-.tobefilled:
+.tobefilledinside:
+				move.b	#COL_INFO_WALL,-1(a0)
+
+				lea		$20000,a4
+				move.w	d4,d0
+				add.w	#PLAYFIELD_START_X,d0
+				move.w	d5,d1
+				add.w	#PLAYFIELD_START_Y,d1
+				bsr		PlotPixelCyan
+
+				move.l	#$28000,a4
+				move.w	d4,d0
+				add.w	#PLAYFIELD_START_X,d0
+				move.w	d5,d1
+				add.w	#PLAYFIELD_START_Y,d1
+				bsr		PlotPixelCyan
+				bra.s	.doloop
+
+.tobefilledborder:
 				move.b	#COL_INFO_WALL,-1(a0)
 
 				lea		$20000,a4
@@ -562,7 +580,7 @@ FillPlayField:
 				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelWhite
 				bra.s	.doloop
-
+				
 .isfilling:
 				clr.b	-1(a0)					; like move.b	#COL_INFO_NOTHING,-1(a0)	; filled area become empty
 				
@@ -589,7 +607,7 @@ TouchPlayerTracing:
 				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
-				move.l	#$28000,a1
+				lea		$28000,a1
 				move.l	(a3),d0
 				sub.l	#3,d0
 				move.l	4(a3),d1
@@ -625,26 +643,12 @@ TouchPlayerTracing:
 				move.w	d5,d1
 				add.w	#PLAYFIELD_START_Y,d1
 				bsr		PlotPixelBlack
-				add.w	#1,d0
-				bsr		PlotPixelBlack
-				move.w	d4,d0
-				add.w	#1,d1
-				bsr		PlotPixelBlack
-				add.w	#1,d0
-				bsr		PlotPixelBlack
 
-				move.l	#$28000,a4
+				lea		$28000,a4
 				move.w	d4,d0
 				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelBlack
-				add.w	#1,d0
-				bsr		PlotPixelBlack
-				move.w	d4,d0
-				add.w	#1,d1
-				bsr		PlotPixelBlack
-				add.w	#1,d0
 				bsr		PlotPixelBlack
 				bra.s	.doloop
 
@@ -667,174 +671,215 @@ TouchPlayerTracing:
 
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
+
+	even
+QLixCoord:		dcb.l	8 ; 2 coord * 2
+	even
+QLixVelocity:	dc.l	256,-128,128,-256
+	even
+;=============================================================================
+; Move one coord of the QLix
+; a1 = coord to move
+; a2 = vel coord to move
+;=============================================================================
+QLIX_MOVE_MASK 		equ		$FF
+QLIX_MOVE_ADD 		equ		1024
+QLIX_MOVE_LSL 		equ		6
+QLIX_DIST_POINT		equ		12*256
+QLIX_DIST_ADJUST	equ		128
+QLIX_MAX_VELOCITY	equ		768
+
+MoveOneQLixCoord:
+; Move and test collision for X
+				move.l	(a1),d0
+				move.l	4(a1),d1
+				add.l	(a2),d0
+
+				moveq	#0,d2
+				lsr.l	#8,d0
+				lsr.l	#8,d1
+				sub.l	#PLAYFIELD_START_X,d0
+				sub.l	#PLAYFIELD_START_Y,d1
+				bsr		GetQLixColInfo
+
+				tst.b	d2
+				beq.s	.nocollideX
+				cmp.b	#COL_INFO_WALL,d2
+				beq.s	.collidewallX
+				cmp.b	#COL_INFO_TRACING,d2
+				beq		.collidetracing
+
+.collidewallX:
+				neg.l	(a2)						; Change direction of X velocity
+				GetRandom d0
+				move.l	d0,d1
+				and.l	#QLIX_MOVE_MASK,d0
+				add.l	#QLIX_MOVE_ADD,d0
+				;lsl.l	#QLIX_MOVE_LSL,d0
+				btst	#8,d1
+				beq.s	.negy
+				neg.l	d0
+.negy:
+				move.l	d0,4(a2)					; Random Y velocity
+				bra.s	.testcollideY
+
+.nocollideX:
+				move.l	(a2),d0
+				add.l	d0,(a1)						; Save new X
+.testcollideY:
+
+; Move and test collision for Y
+				move.l	(a1),d0
+				move.l	4(a1),d1
+				add.l	4(a2),d1
+
+				moveq	#0,d2
+				lsr.l	#8,d0
+				lsr.l	#8,d1
+				sub.l	#PLAYFIELD_START_X,d0
+				sub.l	#PLAYFIELD_START_Y,d1
+				bsr		GetQLixColInfo
+
+				tst.b	d2
+				beq.s	.nocollideY
+				cmp.b	#COL_INFO_WALL,d2
+				beq.s	.collidewallY
+				cmp.b	#COL_INFO_TRACING,d2
+				beq.s	.collidetracing
+
+.collidewallY:
+				neg.l	4(a2)						; Change direction of Y velocity
+				GetRandom d0
+				move.l	d0,d1
+				and.l	#QLIX_MOVE_MASK,d0
+				add.l	#QLIX_MOVE_ADD,d0
+				;lsl.l	#QLIX_MOVE_LSL,d0
+				btst	#8,d1
+				beq.s	.negx
+				neg.l	d0
+.negx:
+				move.l	d0,(a2)						; Random X velocity
+				bra.s	.endcollide
+
+.collidetracing:
+				bsr		TouchPlayerTracing
+				bra.s	.endcollide
+
+.nocollideY:
+				move.l	4(a2),d0
+				add.l	d0,4(a1)						; Save new Y
 				
+.endcollide:
+				rts
+				
+
 ;=============================================================================
 ; Move QLix
 ;=============================================================================
 MoveQLix:
-                ;movem.l d0-d7/a0-a6,-(sp)
-	;DBGBREAK
-; Move the QLix (24:8 format)
-				lea		QLixCoord(pc),a4
-				lea		QLixDir(pc),a5
-				lea		SinTable(pc),a0
+;	DBGBREAK
 
-				lea		NbFrameLastCollide(pc),a3
-				move.w	(a3),d6
-				
-				tst.w	d6
-				bne.s	.nodiraddx					; No add (do not change direction) if colliding recently
-				add.w	#1,(a5)
-.nodiraddx:
-				move.w	(a5),d0
-				and.w	#$FF,d0
-				add.w	d0,d0
-				move.w	(a0,d0.w),d1
-				ext.l	d1
-				;asr.l	#1,d1
-				;muls	#2,d1
-				lsl.l	#1,d1
-				add.l	d1,(a4)
-
-				tst.w	d6
-				bne.s	.nodiraddy					; No add (do not change direction) if colliding recently
-				add.w	#1,2(a5)
-.nodiraddy:
-				move.w	2(a5),d0
-				and.w	#$FF,d0
-				add.w	d0,d0
-				move.w	(a0,d0.w),d1
-				ext.l	d1
-				;asr.l	#1,d1
-				;muls	#2,d1
-				lsl.l	#1,d1
-				sub.l	d1,4(a4)
-				
-; Draw the QLix
-			; Erase previous line 1.
-				lea		QLixPreviousLines(pc),a0
-				lea		BufferNum(pc),a1
-				move.w	(a1),d2
-				lsl.w	#4,d2
-				move.w	(a0,d2.w),d0
-				move.w	2(a0,d2.w),d1
-				move.w	4(a0,d2.w),d4
-				move.w	6(a0,d2.w),d5
+; Erase previous QLix
+				lea		QLixCoord(pc),a1
+				move.l	16(a1),d0
+				move.l	20(a1),d1
+				move.l	24(a1),d4
+				move.l	28(a1),d5
 				move.l	#ColorPixelBlack,d6
 				bsr		DrawLineQLix
 
-			; Erase previous line 2.
-				lea		QLixPreviousLines(pc),a0
-				lea		BufferNum(pc),a1
-				move.w	(a1),d2
-				lsl.w	#4,d2
-				move.w	8(a0,d2.w),d0
-				move.w	10(a0,d2.w),d1
-				move.w	12(a0,d2.w),d4
-				move.w	14(a0,d2.w),d5
-				move.l	#ColorPixelBlack,d6
-				bsr		DrawLineQLix
+; Make the two points at good distance
+				lea		QLixCoord(pc),a1
+				lea		QLixVelocity(pc),a2
+				move.l	(a1),d0					; X0
+				sub.l	8(a1),d0				; X0-X1
+				bpl.s	.nonegx
+				neg.l	d0						; |X0-X1|
+.nonegx:
+				cmp.l	#QLIX_DIST_POINT,d0
+				bmi.s	.startdisty
 
-				moveq	#0,d2
-				moveq	#0,d3
+				move.l	(a1),d0
+				cmp.l	8(a1),d0
+				bgt.s	.x0x1					; X0 > X1 ?
+				add.l	#QLIX_DIST_ADJUST,(a2)
+				sub.l	#QLIX_DIST_ADJUST,8(a2)
+				bra.s	.startdisty
+.x0x1:
+				sub.l	#QLIX_DIST_ADJUST,(a2)
+				add.l	#QLIX_DIST_ADJUST,8(a2)
 
-			; Apply the rotation to compute X and Y for both coord of the line.
-				lea		QLixRotation(pc),a5
-				add.w	#1,(a5)
-				move.w	(a5),d0
-				bsr		GetSinCos
-				ext.l	d2
-				ext.l	d3
-				asr.l	#5,d2
-				asr.l	#5,d3
+.startdisty;
+				move.l	4(a1),d0					; Y0
+				sub.l	12(a1),d0				; Y0-Y1
+				bpl.s	.nonegy
+				neg.l	d0						; |Y0-Y1|
+.nonegy:
+				cmp.l	#QLIX_DIST_POINT,d0
+				bmi.s	.nottoofarawayy
+
+				move.l	4(a1),d0
+				cmp.l	12(a1),d0
+				bgt.s	.y0y1					; Y0 > Y1 ?
+				add.l	#QLIX_DIST_ADJUST,4(a2)
+				sub.l	#QLIX_DIST_ADJUST,12(a2)
+				bra.s	.nottoofarawayy
+.y0y1:
+				sub.l	#QLIX_DIST_ADJUST,4(a2)
+				add.l	#QLIX_DIST_ADJUST,12(a2)
+.nottoofarawayy:
+; Move the two points
+				lea		QLixCoord(pc),a1
+				lea		QLixVelocity(pc),a2
+				bsr 	MoveOneQLixCoord
+
+				lea		QLixCoord+8(pc),a1
+				lea		QLixVelocity+8(pc),a2
+				bsr 	MoveOneQLixCoord
+
 				
-			; Compute line coords
-				lea		QLixCoord(pc),a4
-				move.l	(a4),d0
-				asr.l   #8,d0
-				move.l	4(a4),d1
-				asr.l   #8,d1
+; Cap velocity
+.capx0:
+				cmp.l	#QLIX_MAX_VELOCITY,(a2)
+				ble.s	.capx1
+				move.l	#QLIX_MAX_VELOCITY,(a2)
+.capx1:
+				cmp.l	#-QLIX_MAX_VELOCITY,8(a2)
+				bge.s	.capy0
+				move.l	#-QLIX_MAX_VELOCITY,8(a2)
 
-				move.w	d0,d6
-				move.w	d1,d7		; Save X & Y
-
-			; First line
-				move.w	d0,d4
-				move.w	d1,d5
-				add.w	d3,d4
- 				add.w	d2,d5
-
-			; Save line to be erased next time
-				lea		QLixPreviousLines(pc),a0
-				lea		BufferNum(pc),a1
-				move.w	(a1),d6
-				lsl.w	#4,d6						; Stock depends of the frame
-				move.w	d0,(a0,d6.w)
-				move.w	d1,2(a0,d6.w)
-				move.w	d4,4(a0,d6.w)
-				move.w	d5,6(a0,d6.w)
-
-			; Draw first line.
+.capy0:
+				cmp.l	#QLIX_MAX_VELOCITY,4(a2)
+				ble.s	.capy1
+				move.l	#QLIX_MAX_VELOCITY,4(a2)
+.capy1:
+				cmp.l	#-QLIX_MAX_VELOCITY,12(a2)
+				bge.s	.drawqlix
+				move.l	#-QLIX_MAX_VELOCITY,12(a2)
+				
+; Draw QLix
+.drawqlix:
+				lea		QLixCoord(pc),a1
+				move.l	(a1),d0
+				move.l	4(a1),d1
+				move.l	8(a1),d4
+				move.l	12(a1),d5
+				lsr.l	#8,d0
+				lsr.l	#8,d1
+				lsr.l	#8,d4
+				lsr.l	#8,d5
+				move.l	d0,16(a1)
+				move.l	d1,20(a1)
+				move.l	d4,24(a1)
+				move.l	d5,28(a1)
 				move.l	#ColorPixelWhite,d6
 				bsr		DrawLineQLix
 				
-				move.l	a6,a5						; Save color collision if any.
-
-			; Second line
-				move.w	d0,d4
-				move.w	d1,d5
-				sub.w	d3,d4
- 				sub.w	d2,d5
-
-			; Save line to be erased next time
-				lea		QLixPreviousLines(pc),a0
-				lea		BufferNum(pc),a1
-				move.w	(a1),d6
-				lsl.w	#4,d6						; Stock depends of the frame
-				move.w	d0,8(a0,d6.w)
-				move.w	d1,10(a0,d6.w)
-				move.w	d4,12(a0,d6.w)
-				move.w	d5,14(a0,d6.w)
-
-			; Draw second line.
-				move.l	#ColorPixelBlue,d6
-				bsr		DrawLineQLix
-				
-				move.l	a6,d0
-				move.l	a5,d1
-
-				lea		NbFrameLastCollide(pc),a3
-				tst.w	(a3)
-				bne.s	.notfirstcollide			; Do nothing if already fleeing previous collision
-				
-				tst.w	d0
-				bne.s	.collide
-				move.w	d1,d0
-				tst.w	d0
-				bne.s	.collide
-				bra.s	.nocollide					; Everything black -> No collision
-
-.collide:
-				cmp.w	#ColorPixelWhite,d0
-				bne.s	.nowhitecolor
-				lea		QLixDir(pc),a5
-				add.w	#128,(a5)
-				add.w	#128,2(a5)					; Change direction of the Qix
-				move.w	#4,(a3)						; 4 frames moving to the oposite direction.
-				bra.s	.endcollide
-.nowhitecolor:
-				cmp.w	#ColorPixelRed,d0
-				bne.s	.endcollide
+				cmp.l	#ColorPixelRed,a6		; Any pixel of the drawline touch player line?
+				bne.s	.noplayercollide
 				bsr		TouchPlayerTracing
-				bra.s	.endcollide
-
-.nocollide:
-				tst.w	(a3)
-				beq.s	.endcollide
-.notfirstcollide:
-				sub.w	#1,(a3)
-.endcollide:
-                ;movem.l (sp)+,d0-d7/a0-a6
+.noplayercollide:
+				
 				rts
 
 ;=============================================================================
@@ -856,9 +901,9 @@ SetQLixColInfo:
 
 				lea		QLixCollision(pc),a0
 				add.w	d0,a0		; X
+				lsl.w	#6,d1		; *64
 				move.w	d1,d0
-				lsl.w	#7,d1		; *128
-				lsl.w	#6,d0		; *64
+				add.w	d0,d0		; *128
 				add.w	d1,a0
 				add.w	d0,a0		; *192 (Y)
 
@@ -878,9 +923,9 @@ GetQLixColInfo:
 
 				lea		QLixCollision(pc),a0
 				add.w	d0,a0		; X
+				lsl.w	#6,d1		; *64
 				move.w	d1,d0
-				lsl.w	#7,d1		; *128
-				lsl.w	#6,d0		; *64
+				add.w	d0,d0		; *128
 				add.w	d1,a0
 				add.w	d0,a0		; *192 (Y)
 				
@@ -888,7 +933,7 @@ GetQLixColInfo:
 				rts
 
 ErrorColCoord:
-				DBGBREAK
+				;DBGBREAK
 				move.b	#COL_INFO_WALL,d2		; We get the info
 				rts
 
@@ -1005,6 +1050,12 @@ COL_BORDER_SIZE equ 3
 				lea		QLixCoord(pc),a0
 				move.l	#128*256,(a0)
 				move.l	#128*256,4(a0)			; 24:8 format (*256)
+				move.l	#132*256,8(a0)
+				move.l	#132*256,12(a0)			; 24:8 format (*256)
+				move.l	#128*256,16(a0)
+				move.l	#128*256,20(a0)			; 24:8 format (*256)
+				move.l	#132*256,24(a0)
+				move.l	#132*256,28(a0)			; 24:8 format (*256)
 
 				
                 movem.l (sp)+,d0-d7/a0-a6
