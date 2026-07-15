@@ -22,7 +22,8 @@ COL_INFO_NOTHING	equ		0
 COL_INFO_WALL		equ		1
 COL_INFO_TRACING	equ		2
 COL_INFO_FILLING	equ		3
-COL_INFO_WAS_A_WAY	equ		4
+COL_INFO_WAY		equ		4
+COL_INFO_WAS_A_WAY	equ		5
 
 PLAYFIELD_START_X	equ		32
 PLAYFIELD_START_Y	equ		48
@@ -160,9 +161,9 @@ MainLoop:
 				move.b	1(a1),d4					; d4 = bits clavier
 				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
-				DBGBREAK
+				;DBGBREAK
 				;bsr		ClearScreen
-				;bsr		DebugDisplayQLixColInfo
+				bsr		DebugDisplayQLixColInfo
 .nobreakpoint:
 
 
@@ -569,6 +570,9 @@ PlayerCanMove:
 				tst.b	d2			; Dest is empty ? can only fill to.
 				beq.s	.canfillto
 
+				cmp.b	#COL_INFO_WAY,d2	; Dest must be a wall
+				beq.s	.canmoveto
+
 				cmp.b	#COL_INFO_WALL,d2	; Dest must be a wall
 				bne.s	.cantmoveto
 
@@ -607,6 +611,7 @@ PlayerCanMove:
 ;=============================================================================
 FillPlayField:
                 movem.l d0-d7/a0-a6,-(sp)
+				;DBGBREAK
 
 				lea		FloodFillingStack,a6
 				lea		FloodFillingStack,a5
@@ -701,14 +706,48 @@ FillPlayField:
 				tst.b	(a0)					; like cmp.b	#COL_INFO_NOTHING,(a0)
 				beq.s	.filltotheright
 
-				bra		.loopfilling
+				bra.s	.loopfilling
 				
 .endfilling:
+				DBGBREAK
+
+; Find Way that must be Old Way
+				move.l	#COL_INFO_WAY,d0
+				move.l	#COL_INFO_FILLING,d1
+				move.l	#COL_INFO_WAS_A_WAY,d2
+
+				lea		QLixCollision(pc),a0
+				move.l	#192*192-1,d7
+.RemoveOldWay:
+				cmp.b	(a0)+,d0
+				bne.s	.noway
+
+				cmp.b	191-1(a0),d1
+				beq.s	.noway
+				cmp.b	192-1(a0),d1
+				beq.s	.noway
+				cmp.b	193-1(a0),d1
+				beq.s	.noway
+				cmp.b	-191-1(a0),d1
+				beq.s	.noway
+				cmp.b	-192-1(a0),d1
+				beq.s	.noway
+				cmp.b	-193-1(a0),d1
+				beq.s	.noway
+				cmp.b	-1-1(a0),d1
+				beq.s	.noway
+				cmp.b	1-1(a0),d1
+				beq.s	.noway
+.setoldway:
+				move.b	d2,-1(a0)
+.noway:
+				dbra	d7,.RemoveOldWay
 
 				;bsr		DebugDisplayQLixColInfo
+				
+				DBGBREAK
 
 ; Now we fill the other part and clean the qix region
-				;DBGBREAK
 				lea		QLixCollision(pc),a0
 				lea		FillingCounter(pc),a6
 
@@ -753,7 +792,7 @@ FillPlayField:
 				bra.s	.doloop
 
 .tobefilledborder:
-				move.b	#COL_INFO_WALL,-1(a0)
+				move.b	#COL_INFO_WAY,-1(a0)
 
 				add.l	#185,(a6)						; Inc filling counter
 
@@ -1159,13 +1198,23 @@ DebugDisplayQLixColInfo:
 				cmp.b	#COL_INFO_TRACING,d0
 				beq.s	.isRed
 
+				cmp.b	#COL_INFO_WAY,d0
+				beq.s	.isGreen
+
+				cmp.b	#COL_INFO_WAS_A_WAY,d0
+				beq.s	.isBlue
+
 				PlotDebug <Yellow>
 				bra.s	.doloop
-
 .isRed:
 				PlotDebug <Red>
 				bra.s	.doloop
-
+.isGreen:
+				PlotDebug <Green>
+				bra.s	.doloop
+.isBlue:
+				PlotDebug <Blue>
+				bra.s	.doloop
 .isWhite:
 				PlotDebug <White>
 				
@@ -1199,15 +1248,56 @@ ResetQLix:
 				bsr		zx0_decompress
 
 ; Init collisions informations
+; TODO : Can be highly optimized with movem (but done only once per level at start...)
+;COL_INFO_NOTHING	equ		0
+;COL_INFO_WALL		equ		1
+;COL_INFO_TRACING	equ		2
+;COL_INFO_FILLING	equ		3
+;COL_INFO_WAY		equ		4
+;COL_INFO_WAS_A_WAY	equ		5
+COL_BORDER_SIZE equ	3
 				lea		QLixCollision(pc),a0
-				move.l	#192*192-1,d1
-.clearcol:
+				move.l	#(192*192)/4-1,d7
+.ClearCol:
+				clr.l	(a0)+ 				; COL_INFO_NOTHING is 0
+				dbra	d7,.ClearCol
+
+				lea		QLixCollision(pc),a0
+				move.l	#192*2-1,d7	; 2 lines of wall
+.WallTop:
 				move.b	#COL_INFO_WALL,(a0)+
-				dbra	d1,.clearcol
+				dbra	d7,.WallTop
+
+				move.l	#192-1,d7	; 1 lines of way
+.WayTop:
+				move.b	#COL_INFO_WAY,(a0)+
+				dbra	d7,.WayTop
+				
+				lea		QLixCollision(pc),a0
+				add.l	#192*(192-3),a0
+				move.l	#192-1,d7	; 1 lines of way
+.WayBottom:
+				move.b	#COL_INFO_WAY,(a0)+
+				dbra	d7,.WayBottom
+
+				move.l	#192*2-1,d7	; 2 lines of wall
+.WallBottom:
+				move.b	#COL_INFO_WALL,(a0)+
+				dbra	d7,.WallBottom
 
 				lea		QLixCollision(pc),a0
-
-COL_BORDER_SIZE equ 3
+				lea		192*2(a0),a0
+				move.l	#192-4-1,d7	; 192 lines of border
+.Border:
+				move.b	#COL_INFO_WALL,(a0)+
+				move.b	#COL_INFO_WALL,(a0)+
+				move.b	#COL_INFO_WAY,(a0)+
+				lea		192-6(a0),a0
+				move.b	#COL_INFO_WAY,(a0)+
+				move.b	#COL_INFO_WALL,(a0)+
+				move.b	#COL_INFO_WALL,(a0)+
+				dbra	d7,.Border
+	if 0
 				moveq	#COL_BORDER_SIZE,d5		; Y screen
 				lea		192*COL_BORDER_SIZE+COL_BORDER_SIZE(a0),a0
 				move.l	#192-2*COL_BORDER_SIZE-1,d7	; Nb lines
@@ -1224,7 +1314,7 @@ COL_BORDER_SIZE equ 3
 
 				add.w	#1,d5
 				dbra	d7,.loopY
-				
+	endif
 ; Init player vars
 				lea		PlayerCoord(pc),a0
 				move.l	#128,(a0)
