@@ -22,6 +22,7 @@ COL_INFO_NOTHING	equ		0
 COL_INFO_WALL		equ		1
 COL_INFO_TRACING	equ		2
 COL_INFO_FILLING	equ		3
+COL_INFO_WAS_A_WAY	equ		4
 
 PLAYFIELD_START_X	equ		32
 PLAYFIELD_START_Y	equ		48
@@ -69,7 +70,7 @@ Start:
 				bsr		ResetQLix
 MainLoop:
 			; WaitVBlank
-				jsr		WaitVBlank
+				bsr		WaitVBlank
 				
 			ifd TIMER_MODE
 				move.b	#ScreenMode01,$18063			; Display screen 1
@@ -146,7 +147,9 @@ MainLoop:
 			endif
 
 				;bsr		ClearScreen
-				lea		Ennemy01Coord(pc),a6
+				lea		Ennemy01(pc),a6
+				bsr		MoveEnnemy
+				lea		Ennemy02(pc),a6
 				bsr		MoveEnnemy
 
 				bsr		MovePlayer
@@ -204,8 +207,26 @@ FloodFillingStackBottom:
 FloodFillingStack:
 	even
 
-Ennemy01Coord:	dc.l	0,0
+Ennemy01:
+		dc.l	0,0		; 0 : Coord, 4 : Coord Y
+		dc.b	0		; 8 : Current move offest
 	even
+Ennemy02:
+		dc.l	0,0		; 0 : Coord, 4 : Coord Y
+		dc.b	0		; 8 : Current move offest
+	even
+
+EnnemyMoveOffest:
+	dc.b	0,1,3,-1 ; R D U   ; Add -1 to multiple by 4 to get the right offset list
+	dc.b	1,2,0,-1 ; D L R
+	dc.b	2,3,1,-1 ; L U D
+	dc.b	3,0,2,-1 ; U R L
+
+EnnemyCoordForMoveOffest:
+	dc.b	1,0		; R
+	dc.b	0,1		; D
+	dc.b	-1,0	; L
+	dc.b	0,-1	; U
 
 ;=============================================================================
 ; Move one ennemy
@@ -217,50 +238,50 @@ MoveEnnemy:
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				move.l	#$28000,a1
-				move.l	(a6),d0
-				sub.l	#4,d0
-				move.l	4(a6),d1
-				sub.l	#4,d1
+				move.l	(a6),d0			; X
+				sub.b	#4,d0
+				move.l	4(a6),d1		; Y
+				sub.b	#4,d1
 				bsr 	CleanSprite8x8Shifted
 
-; Move ennemy
-.testright:
-				move.l	(a6),d0
-				move.l	4(a6),d1
-				add.l	#1,d0
-				bsr		PlayerCanMove ; d0-d2,a2
-				cmp.b	#1,d2
-				bne.s	.testdown
-				add.l	#1,(a6)
-				bra.s	.fintestmove
-.testdown:
-				move.l	(a6),d0
-				move.l	4(a6),d1
-				add.l	#1,d1
-				bsr		PlayerCanMove ; d0-d2,a2
-				cmp.b	#1,d2
-				bne.s	.testleft
-				add.l	#1,4(a6)
-				bra.s	.fintestmove
-.testleft:
-				move.l	(a6),d0
-				move.l	4(a6),d1
-				sub.l	#1,d0
-				bsr		PlayerCanMove ; d0-d2,a2
-				cmp.b	#1,d2
-				bne.s	.testup
-				sub.l	#1,(a6)
-				bra.s	.fintestmove
-.testup:
-				move.l	(a6),d0
-				move.l	4(a6),d1
-				sub.l	#1,d1
-				bsr		PlayerCanMove ; d0-d2,a2
-				cmp.b	#1,d2
-				bne.s	.fintestmove
-				sub.l	#1,4(a6)
+; Next move according to the table offest
+				;DBGBREAK
 
-.fintestmove:
+				lea		EnnemyMoveOffest(pc),a3
+				lea		EnnemyCoordForMoveOffest(pc),a4
+				moveq	#0,d0
+				moveq	#0,d1
+				moveq	#0,d2
+				moveq	#0,d3
+				move.b	8(a6),d3		; Get move offest table
+				lsl.b	#2,d3			; *4
+				
+.TestNextMoveOffset:
+				move.b	(a3,d3.w),d2	; Get num coord for move offest
+				cmp.b	#-1,d2
+				beq.s	.EnnemyLocked
+				move.b	d2,d7
+				add.b	#1,d3			; Next move offset if needed
+				add.b	d2,d2			; *2
+				
+				move.l	(a6),d5			; X
+				move.l	4(a6),d6		; Y
+				add.b	(a4,d2.w),d5
+				add.b	1(a4,d2.w),d6	; New coord to test
+
+				move.l	d5,d0
+				move.l	d6,d1
+				bsr		PlayerCanMove 	; d0-d2,a2
+				cmp.b	#1,d2
+				bne.s	.TestNextMoveOffset
+				;beq.s	.nextoff
+				;DBGBREAK
+				;bra.s	.TestNextMoveOffset
+
+;.nextoff:
+				move.b	d7,8(a6)		; Store new move offset
+				move.l	d5,(a6)			; New X
+				move.l	d6,4(a6)		; New Y
 				
 ; Draw ennemies
 				lea		SpriteEnnemy_01,a1
@@ -285,7 +306,11 @@ MoveEnnemy:
 				move.l	(a0),a0
 				bsr		DisplaySprite8x8MaskedShifted
 				rts
-	
+
+.EnnemyLocked:
+				DBGBREAK
+				rts
+
 ;=============================================================================
 ; Move Player
 ;=============================================================================
@@ -1214,10 +1239,15 @@ COL_BORDER_SIZE equ 3
 				CleanVarL FillingCounter,a0
 
 ; Init ennemies
-				lea		Ennemy01Coord(pc),a0
-				move.l	#128,(a0)
+				lea		Ennemy01(pc),a0
+				move.l	#34+46,(a0)
 				move.l	#47+COL_BORDER_SIZE,4(a0)
+				move.b	#2,8(a0)
 
+				lea		Ennemy02(pc),a0
+				move.l	#221-46,(a0)
+				move.l	#47+COL_BORDER_SIZE,4(a0)
+				move.b	#0,8(a0)
 				
 ; Init QLix vars:
 				lea		QLixCoord(pc),a0
