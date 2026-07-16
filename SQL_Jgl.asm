@@ -28,21 +28,20 @@ COL_INFO_WAS_A_WAY	equ		5
 PLAYFIELD_START_X	equ		32
 PLAYFIELD_START_Y	equ		48
 
+NB_LIFE_START		equ		3
+
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
 
 
 ; TODO :
-; - Check if the player is not in a valid zone after a fill and set him at a safe place.
+; - Check if the player is not in a valid zone after a fill and set him at a safe place. OR DIE ?
 
 
 ; =============================================================================
 
 Start:
-				lea     NbLoop(pc),a0
-                move.l  #0,(a0)
-
 			; Remove QDOS, mainly for double buffering as second screen adress contain QDOS data (and  code ?)
 			ifd BARE_METAL
                 trap    #0              ; Call QDOS for Superviseur mode
@@ -55,6 +54,9 @@ Start:
 
 				DBGENABLE
 				;DBGBREAK
+
+				lea     NbLoop(pc),a0
+                move.l  #0,(a0)
 
 			; Setup double buffering & first clear
 				move.b	#ScreenMode01,$18063
@@ -163,20 +165,14 @@ MainLoop:
 				beq.s	.nobreakpoint
 				;DBGBREAK
 				;bsr		ClearScreen
-				bsr		DebugDisplayQLixColInfo
+				;bsr		DebugDisplayQLixColInfo
+
+				bsr		PlayTune
+				;lea		SoundCommand(pc),a3
+				;move.b	#$11,d0					; MT.lPCOM
+				;trap	#1
+
 .nobreakpoint:
-
-
-				lea		Text000(pc),a0
-				lea		FillingCounter(pc),a6
-				move.l	(a6),d0
-				lsr.l	#8,d0
-				lsr.l	#8,d0
-				bsr		NumberToAscii_000
-				
-				move.l	#19*8,d0
-				move.l	#20,d1
-				bsr		DisplayText
 
 
 			ifd TIMER_MODE
@@ -186,8 +182,11 @@ MainLoop:
 
                 rts
 
+				
+	
 ;=============================================================================
 	include "controls.asm"
+	include "sound.asm"
 	include "random.asm"
 	include "unzx0_68000.asm"
 	include "PlotPixel.asm"
@@ -200,6 +199,8 @@ PlayerCoord:	dc.l	0,0
 PlayerCoordStartTracing:	dc.l	0,0				
 	even
 PlayerIsTracing:	dc.b 0
+	even
+PlayerLife:	dc.b 0
 	even
 FillingCounter:		dc.l 0
 	even
@@ -245,9 +246,17 @@ MoveEnnemy:
 				sub.b	#4,d1
 				bsr 	CleanSprite8x8Shifted
 
+; Get current col
+				moveq	#0,d2
+				move.l	(a6),d0			; X
+				move.l	4(a6),d1		; Y
+				sub.w	#PLAYFIELD_START_X,d0
+				sub.w	#PLAYFIELD_START_Y,d1
+				bsr		GetQLixColInfo
+				move.l	d2,a5			; Save col info
+
 ; Next move according to the table offest
 				;DBGBREAK
-
 				lea		EnnemyMoveOffest(pc),a3
 				lea		EnnemyCoordForMoveOffest(pc),a4
 				moveq	#0,d0
@@ -272,14 +281,16 @@ MoveEnnemy:
 
 				move.l	d5,d0
 				move.l	d6,d1
+				cmp.l	#COL_INFO_WAS_A_WAY,a5
+				bne.s	.TestPlayerMoveNormal
+				bsr		PlayerCanMoveFromOldWay 	; d0-d2,a2
+				bra.s	.EndCanMove
+.TestPlayerMoveNormal:
 				bsr		PlayerCanMove 	; d0-d2,a2
+.EndCanMove:
 				cmp.b	#1,d2
 				bne.s	.TestNextMoveOffset
-				;beq.s	.nextoff
-				;DBGBREAK
-				;bra.s	.TestNextMoveOffset
 
-;.nextoff:
 				move.b	d7,8(a6)		; Store new move offset
 				move.l	d5,(a6)			; New X
 				move.l	d6,4(a6)		; New Y
@@ -544,9 +555,10 @@ MovePlayer:
 ;COL_INFO_WALL		equ		1
 ;COL_INFO_TRACING	equ		2
 ;COL_INFO_FILLING	equ		3
-PlayerCanMove:
-				;DBGBREAK
+;COL_INFO_WAY		equ		4
+;COL_INFO_WAS_A_WAY	equ		5
 
+	macro CommonPlayerMoveStart
 				sub.w	#PLAYFIELD_START_X,d0
 				bmi.s	.outcoordmove
 				sub.w	#PLAYFIELD_START_Y,d1
@@ -570,29 +582,11 @@ PlayerCanMove:
 				tst.b	d2			; Dest is empty ? can only fill to.
 				beq.s	.canfillto
 
-				cmp.b	#COL_INFO_WAY,d2	; Dest must be a wall
+				cmp.b	#COL_INFO_WAY,d2	; Dest must be a way
 				beq.s	.canmoveto
+	endm
 
-				cmp.b	#COL_INFO_WALL,d2	; Dest must be a wall
-				bne.s	.cantmoveto
-
-				tst.b	1(a2)		; In all around dest, at least one must be empty
-				beq.s	.canmoveto
-				tst.b	-1(a2)
-				beq.s	.canmoveto
-				tst.b	192(a2)
-				beq.s	.canmoveto
-				tst.b	-192(a2)
-				beq.s	.canmoveto
-				tst.b	-191(a2)
-				beq.s	.canmoveto
-				tst.b	-193(a2)
-				beq.s	.canmoveto
-				tst.b	193(a2)
-				beq.s	.canmoveto
-				tst.b	191(a2)
-				beq.s	.canmoveto
-			
+	macro CommonPlayerMoveEnd
 				bra.s	.cantmoveto
 .canmoveto:
 				moveq	#1,d2
@@ -604,6 +598,18 @@ PlayerCanMove:
 				DBGBREAK
 .cantmoveto:
 				moveq	#2,d2
+	endm
+
+PlayerCanMove:
+				CommonPlayerMoveStart
+				CommonPlayerMoveEnd
+				rts				
+
+PlayerCanMoveFromOldWay:
+				CommonPlayerMoveStart
+				cmp.b	#COL_INFO_WAS_A_WAY,d2	; or Dest must be an old way
+				beq.s	.canmoveto
+				CommonPlayerMoveEnd
 				rts				
 				
 ;=============================================================================
@@ -611,7 +617,6 @@ PlayerCanMove:
 ;=============================================================================
 FillPlayField:
                 movem.l d0-d7/a0-a6,-(sp)
-				;DBGBREAK
 
 				lea		FloodFillingStack,a6
 				lea		FloodFillingStack,a5
@@ -709,7 +714,7 @@ FillPlayField:
 				bra.s	.loopfilling
 				
 .endfilling:
-				DBGBREAK
+				;DBGBREAK
 
 ; Find Way that must be Old Way
 				move.l	#COL_INFO_WAY,d0
@@ -744,8 +749,7 @@ FillPlayField:
 				dbra	d7,.RemoveOldWay
 
 				;bsr		DebugDisplayQLixColInfo
-				
-				DBGBREAK
+				;DBGBREAK
 
 ; Now we fill the other part and clean the qix region
 				lea		QLixCollision(pc),a0
@@ -820,6 +824,9 @@ FillPlayField:
 
 				add.w	#1,d5
 				dbra	d7,.loopY
+
+				bsr		UpdateText
+
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -899,6 +906,13 @@ TouchPlayerTracing:
 				lea		PlayerIsTracing(pc),a5
 				move.b	#0,(a5)
 
+				lea		PlayerLife(pc),a0
+				sub.b	#1,(a0)
+				bne.s	.NotGameOver
+				bsr		ResetQLix
+.NotGameOver:				
+				bsr		DisplayLife
+				
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
 
@@ -1112,11 +1126,75 @@ MoveQLix:
 				
 				rts
 
+UpdateText:
+; Percent fill.
+				lea		Text000(pc),a0
+				lea		FillingCounter(pc),a6
+				move.l	(a6),d0
+				lsr.l	#8,d0
+				lsr.l	#8,d0
+				bsr		NumberToAscii_00
+				
+				move.l	#19*8,d0
+				move.l	#20,d1
+				bsr		DisplayText
+
+; Score.
+				lea		Text_Score_Life(pc),a0
+				move.l	#8*5,d0
+				move.l	#243,d1
+				bsr		DisplayText
+
+				rts
+
+DisplayLife:
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a2
+				lea		PlayerLife(pc),a3
+
+				lea		SpriteHeart(pc),a1
+				move.l	a2,a0
+				move.l	#232,d0
+				move.l	#23,d1
+				cmp.b	#3,(a3)
+				bmi.s	.not3life
+				bsr		DisplaySprite16x16
+				bra.s	.2life
+.not3life:
+				bsr		ClearSprite16x16
+				
+.2life:
+
+				lea		SpriteHeart(pc),a1
+				move.l	a2,a0
+				move.l	#232,d0
+				move.l	#23+20,d1
+				cmp.b	#2,(a3)
+				bmi.s	.not2life
+				bsr		DisplaySprite16x16
+				bra.s	.1life
+.not2life:
+				bsr		ClearSprite16x16
+.1life:
+
+				lea		SpriteHeart(pc),a1
+				move.l	a2,a0
+				move.l	#232,d0
+				move.l	#23+20*2,d1
+				cmp.b	#1,(a3)
+				bmi.s	.not1life
+				bsr		DisplaySprite16x16
+				bra.s	.0life
+.not1life:
+				bsr		ClearSprite16x16
+.0life:
+				rts
+
 ;=============================================================================
 ; Collision info
 ; d0 : x (0-191)
 ; d1 : y (0-191)
-; d2 : 0 (nothing), 1 (wall), 2 (tracing), 3-FF (filling)
+; d2 : COL_INFO_???
 ;=============================================================================
 SetQLixColInfo:
 				cmp.w	#0,d0
@@ -1297,24 +1375,7 @@ COL_BORDER_SIZE equ	3
 				move.b	#COL_INFO_WALL,(a0)+
 				move.b	#COL_INFO_WALL,(a0)+
 				dbra	d7,.Border
-	if 0
-				moveq	#COL_BORDER_SIZE,d5		; Y screen
-				lea		192*COL_BORDER_SIZE+COL_BORDER_SIZE(a0),a0
-				move.l	#192-2*COL_BORDER_SIZE-1,d7	; Nb lines
-.loopY:
-				moveq	#COL_BORDER_SIZE,d4		; X screen
-				move.l	#192-2*COL_BORDER_SIZE-1,d6	; Nb cols
-.loopX:
-				move.b	#COL_INFO_NOTHING,(a0)+
 
-				add.w	#1,d4
-				dbra	d6,.loopX
-
-				lea		2*COL_BORDER_SIZE(a0),a0
-
-				add.w	#1,d5
-				dbra	d7,.loopY
-	endif
 ; Init player vars
 				lea		PlayerCoord(pc),a0
 				move.l	#128,(a0)
@@ -1327,6 +1388,9 @@ COL_BORDER_SIZE equ	3
 
 				CleanVarB PlayerIsTracing,a0
 				CleanVarL FillingCounter,a0
+				lea		PlayerLife(pc),a0
+				move.b	#NB_LIFE_START,(a0)
+				
 
 ; Init ennemies
 				lea		Ennemy01(pc),a0
@@ -1351,10 +1415,10 @@ COL_BORDER_SIZE equ	3
 				move.l	#132*256,28(a0)			; 24:8 format (*256)
 
 ; Display static texts
-				lea		Text_Score_Life(pc),a0
-				move.l	#8*5,d0
-				move.l	#243,d1
-				bsr		DisplayText
+				bsr		UpdateText
+
+; Life
+				bsr		DisplayLife
 
                 movem.l (sp)+,d0-d7/a0-a6
 				rts
@@ -1399,7 +1463,7 @@ DisplayText:
 				rts
 
 ;=============================================================================
-; Number to Ascii (000-999)
+; Number to Ascii (00-99)
 ; Input : -
 ;		d0.w = number
 ;		a0 = text address to fill
@@ -1407,18 +1471,7 @@ DisplayText:
 ;		d0, d1, d2, d5, d6
 ;		a0, a1
 ;=============================================================================
-NumberToAscii_000:
-				moveq	#0,d1
-.hundred:
-				add.w	#1,d1
-				sub.w	#100,d0
-				bge.s	.hundred
-
-				sub.w	#1,d1
-				add.b	#"0",d1
-				move.b	d1,(a0)
-				add.w	#100,d0
-				
+NumberToAscii_00:
 				moveq	#0,d1
 .ten:
 				add.w	#1,d1
@@ -1427,35 +1480,12 @@ NumberToAscii_000:
 
 				sub.w	#1,d1
 				add.b	#"0",d1
-				move.b	d1,1(a0)
+				move.b	d1,0(a0)
 				add.w	#10,d0
 
 				add.b	#"0",d0
-				move.b	d0,2(a0)
+				move.b	d0,1(a0)
 				rts
-
-;=============================================================================
-; Sound TEST
-;=============================================================================
-; Note : From sample from https://www.chibiakumas.com/68000/sinclairql.php
-SoundTest:
-				lea		SoundCommand,a3   ; These three lines
-				move.b	#$11,d0    ; Stop the note
-				trap	#1
-				rts
-	even
-SoundCommand:
-        dc.b    $A			; Command
-        dc.b    8           ; Bytes to follow
-        dc.l    $0000aaaa   ; Byte Parameters
-        dc.b    100         ; Pitch 1
-        dc.b    0           ; Pitch 2
-        dc.w    200         ; interval between steps (0,0),
-        dc.w     $FFFF      ; Duration (65535)
-        dc.b    0           ; step in pitch (4bit) / wrap (4bit)
-        dc.b    0           ; randomness of step (4bit) / fuzziness (4bit)
-        dc.b    1           ; No return parameters       
-	even
 
 ;=============================================================================
 ; Display a sprite, 16x16 with mask & shifting, !!! no clipping !!!
@@ -1634,6 +1664,21 @@ DisplaySprite8x8:
 		endr
 				rts
 
+DisplaySprite16x16:
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				lsl.l	#1,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d1,a0			; +y screen
+				add.l	d0,a0			; +x screen
+						
+		rept 16	; lines
+			rept 4 ; words
+				move.w	(a1)+,(a0)+
+			endr
+				
+				lea		120(a0),a0
+		endr
+				rts
 
 ; =============================================================================
 ; Clear 8x8 (3 words for shifting), !!! no clipping !!!
@@ -1692,6 +1737,21 @@ ClearSprite8x8:
 				move.w	#$0,(a0)+
 			endr
 				lea		124(a0),a0
+		endr
+				rts
+
+ClearSprite16x16:
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				lsl.l	#1,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d1,a0			; +y screen
+				add.l	d0,a0			; +x screen
+						
+		rept 16	; lines
+			rept 4 ; words
+				move.w	#$0,(a0)+
+			endr
+				lea		120(a0),a0
 		endr
 				rts
 
@@ -1786,7 +1846,7 @@ BufferNum:		dc.w	0
 	even
 NbLoop:			dc.l	0
 	even
-Text000:		dc.b	"000%",0
+Text000:		dc.b	"00%/75%",0
 Text_Score_Life:		dc.b	"SCORE:000000 ",0
 	even
 
@@ -1818,6 +1878,8 @@ SpriteEnnemy_02:	incbin		"Data\QLixEnnemy02.bin"
 SpriteEnnemy_03:	incbin		"Data\QLixEnnemy03.bin"
 	even
 SpriteEnnemy_04:	incbin		"Data\QLixEnnemy04.bin"
+	even
+SpriteHeart:	incbin			"Data\QLixHeart.bin"
 	even
 Font:			incbin 		"Data\Font8x8.bin"				
 	even
