@@ -29,10 +29,16 @@ PLAYFIELD_START_X	equ		32
 PLAYFIELD_START_Y	equ		48
 
 NB_LIFE_START		equ		3
+TIMER_START			equ		64
 
 ;$18063	Screen Mode S---C-O- On Colordepth Screenpage
 ScreenMode01	equ		%00001000
 ScreenMode02	equ		%10001000
+
+
+GAME_STATUS_MENU		equ		0
+GAME_STATUS_GAME		equ		1
+GAME_STATUS_GAMEOVER	equ		2
 
 
 ; TODO :
@@ -150,6 +156,8 @@ MainLoop:
 			endif
 
 				;bsr		ClearScreen
+				bsr		UpdateTimer
+				
 				lea		Ennemy01(pc),a6
 				bsr		MoveEnnemy
 				lea		Ennemy02(pc),a6
@@ -163,7 +171,7 @@ MainLoop:
 				move.b	1(a1),d4					; d4 = bits clavier
 				btst	#Keyboard01_Enter,d4		; Press space to move while tracing
 				beq.s	.nobreakpoint
-				;DBGBREAK
+				DBGBREAK
 				;bsr		ClearScreen
 				bsr		DebugDisplayQLixColInfo
 
@@ -205,6 +213,8 @@ PlayerLife:	dc.b 0
 FillingCounter:		dc.l 0
 	even
 Score:		dc.l 0
+	even
+Timer:		dc.l 0
 	even
 FloodFillingStackBottom:
 				dcb.b	2048,0
@@ -260,7 +270,7 @@ MoveEnnemy:
 .TestNextMoveOffset:
 				move.b	(a3,d3.w),d2	; Get num coord for move offest
 				cmp.b	#-1,d2
-				beq.s	.EnnemyLocked
+				beq		.EnnemyLocked
 				move.b	d2,d7
 				add.b	#1,d3			; Next move offset if needed
 				add.b	d2,d2			; *2
@@ -285,7 +295,7 @@ MoveEnnemy:
 				move.b	d7,8(a6)		; Store new move offset
 				move.l	d5,(a6)			; New X
 				move.l	d6,4(a6)		; New Y
-				
+
 ; Draw ennemies
 				lea		SpriteEnnemy_01,a1
 
@@ -308,6 +318,32 @@ MoveEnnemy:
 				lea		ScreenBase,a0
 				move.l	(a0),a0
 				bsr		DisplaySprite8x8MaskedShifted
+
+; Player collision
+DIST_COL_ENNEMY_PLAYER		equ 2
+				lea		PlayerCoord(pc),a0
+				move.l	(a0),d0
+				move.l	4(a0),d1
+
+				move.l	(a6),d2
+				move.l	4(a6),d3
+
+				sub.l	d0,d2
+				bpl.s	.nonegx
+				neg.l	d2						; |XP-XE|
+.nonegx:
+				cmp.l	#DIST_COL_ENNEMY_PLAYER,d2
+				bhi.s	.endcollideennemy
+
+				sub.l	d1,d3
+				bpl.s	.nonegy
+				neg.l	d3						; |XP-XE|
+.nonegy:
+				cmp.l	#DIST_COL_ENNEMY_PLAYER,d3
+				bhi.s	.endcollideennemy
+				bsr		TouchPlayerTracing
+
+.endcollideennemy:
 				rts
 
 .EnnemyLocked:
@@ -885,15 +921,7 @@ FillPlayField:
 TouchPlayerTracing:
                 movem.l d0-d7/a0-a6,-(sp)
 
-				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				lea		$28000,a1
-				move.l	(a3),d0
-				sub.l	#3,d0
-				move.l	4(a3),d1
-				sub.l	#3,d1
-				bsr 	CleanSprite8x8Shifted
+				bsr		CleanPreviousDisplay
 
 				moveq	#0,d5		; Y screen
 				
@@ -950,6 +978,8 @@ TouchPlayerTracing:
 				lea		PlayerIsTracing(pc),a5
 				move.b	#0,(a5)
 
+				bsr		ResetEnnemiesPosition
+				
 				lea		PlayerLife(pc),a0
 				sub.b	#1,(a0)
 				bne.s	.NotGameOver
@@ -1161,6 +1191,9 @@ MoveQLix:
 				
 				rts
 
+;=============================================================================
+; Update text
+;=============================================================================
 UpdateText:
 ; Percent fill.
 				lea		Text000(pc),a0
@@ -1187,6 +1220,42 @@ UpdateText:
 
 				rts
 
+;=============================================================================
+; Update timer
+; TODO : Optimiser en ne faisant qu'un draw au départ et en effacant les pixels du temps qui descend.
+;=============================================================================
+UpdateTimer:
+				move.l	#208,d4
+				move.l	d4,d0
+				sub.l	#64,d0
+				move.l	#246,d1
+				move.l	d1,d5
+				move.l	#ColorPixelBlack,d6
+				bsr		DrawLine
+
+				lea		Timer(pc),a0
+				sub.l	#256,(a0)
+				ble.s	.nomoretime
+				move.l	#208,d4
+				move.l	d4,d0
+				move.l	(a0),d2
+				lsr.l	#8,d2
+				lsr.l	#6,d2
+				sub.l	d2,d0
+				move.l	#246,d1
+				move.l	d1,d5
+				move.l	#ColorPixelYellow,d6
+				bsr		DrawLine
+
+				rts
+				
+.nomoretime:
+				bsr		ResetQLix
+				rts
+				
+;=============================================================================
+; Update life
+;=============================================================================
 DisplayLife:
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a2
@@ -1483,18 +1552,13 @@ COL_BORDER_SIZE equ	3
 				CleanVarL Score,a0
 				lea		PlayerLife(pc),a0
 				move.b	#NB_LIFE_START,(a0)
-				
+
+; Timer
+				lea		Timer(pc),a0
+				move.l	#TIMER_START*256*50,(a0)
 
 ; Init ennemies
-				lea		Ennemy01(pc),a0
-				move.l	#34+46,(a0)
-				move.l	#47+COL_BORDER_SIZE,4(a0)
-				move.b	#2,8(a0)
-
-				lea		Ennemy02(pc),a0
-				move.l	#221-46,(a0)
-				move.l	#47+COL_BORDER_SIZE,4(a0)
-				move.b	#0,8(a0)
+				bsr		ResetEnnemiesPosition
 				
 ; Init QLix vars:
 				lea		QLixCoord(pc),a0
@@ -1514,6 +1578,21 @@ COL_BORDER_SIZE equ	3
 				bsr		DisplayLife
 
                 movem.l (sp)+,d0-d7/a0-a6
+				rts
+
+;=============================================================================
+; Reset Ennemies Position
+;=============================================================================
+ResetEnnemiesPosition:
+				lea		Ennemy01(pc),a0
+				move.l	#34+46,(a0)
+				move.l	#47+COL_BORDER_SIZE,4(a0)
+				move.b	#2,8(a0)
+
+				lea		Ennemy02(pc),a0
+				move.l	#221-46,(a0)
+				move.l	#47+COL_BORDER_SIZE,4(a0)
+				move.b	#0,8(a0)
 				rts
 
 ;=============================================================================
