@@ -204,6 +204,8 @@ PlayerLife:	dc.b 0
 	even
 FillingCounter:		dc.l 0
 	even
+Score:		dc.l 0
+	even
 FloodFillingStackBottom:
 				dcb.b	2048,0
 FloodFillingStack:
@@ -605,16 +607,23 @@ PlayerCanMoveFromOldWay:
 ;=============================================================================
 ; Fill Playfield when the player close
 ;=============================================================================
+	even
+PreviousFillingCounter: dc.l 0
+
 FillPlayField:
                 movem.l d0-d7/a0-a6,-(sp)
 
+				lea		PreviousFillingCounter(pc),a5
+				lea		FillingCounter(pc),a6
+				move.l	(a6),(a5)						; To compute a score based on filling at one time
+				
 				lea		FloodFillingStack,a6
 				lea		FloodFillingStack,a5
 				
 ;9794414 : 1,3s
 ;9789900 cycles
 
-				DBGBREAK
+				;DBGBREAK
 ; Coord to start flood scanline filling
 ; First we fill the Qix region
 				lea		QLixCoord(pc),a3
@@ -710,7 +719,7 @@ FillPlayField:
 				bra.s	.loopfilling
 				
 .endfilling:
-				DBGBREAK
+				;DBGBREAK
 
 ; Find Way that must be Old Way
 ; 1937208 cycles ; 0.25s
@@ -769,7 +778,7 @@ FillPlayField:
 				DoAWay 4						; 3 & 4 here to allow .s for jump
 .end_scan:
 				;bsr		DebugDisplayQLixColInfo
-				DBGBREAK
+				;DBGBREAK
 
 ; Now we fill the other part and clean the qix region
 				lea		QLixCollision(pc),a0
@@ -844,6 +853,21 @@ FillPlayField:
 
 				add.w	#1,d5
 				dbra	d7,.loopY
+
+				
+; Update Score.
+				lea		PreviousFillingCounter(pc),a5
+				lea		FillingCounter(pc),a6
+				move.l	(a6),d0
+				sub.l	(a5),d0
+				lsr.l	#8,d0
+				lsr.l	#8,d0
+				add.l	#1,d0
+				
+				mulu	d0,d0
+				lsl.l	#4,d0
+				lea		Score(pc),a5
+				add.l	d0,(a5)
 
 				bsr		UpdateText
 
@@ -1151,7 +1175,12 @@ UpdateText:
 				bsr		DisplayText
 
 ; Score.
-				lea		Text_Score_Life(pc),a0
+				lea		Text_Score+6(pc),a0
+				lea		Score(pc),a6
+				move.l	(a6),d0
+				bsr		NumberToAscii_000000
+
+				lea		Text_Score(pc),a0
 				move.l	#8*5,d0
 				move.l	#243,d1
 				bsr		DisplayText
@@ -1451,6 +1480,7 @@ COL_BORDER_SIZE equ	3
 
 				CleanVarB PlayerIsTracing,a0
 				CleanVarL FillingCounter,a0
+				CleanVarL Score,a0
 				lea		PlayerLife(pc),a0
 				move.b	#NB_LIFE_START,(a0)
 				
@@ -1548,6 +1578,80 @@ NumberToAscii_00:
 
 				add.b	#"0",d0
 				move.b	d0,1(a0)
+				rts
+
+;=============================================================================
+; Number to Ascii (000000-999999)
+; Input : -
+;		d0.l = number
+;		a0 = text address to fill
+; Destroy :
+;		d0, d1, d2, d5, d6
+;		a0, a1
+;=============================================================================
+NumberToAscii_000000:
+				moveq	#0,d1
+.l000000:
+				add.w	#1,d1
+				sub.l	#1000000,d0
+				bge.s	.l000000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,0(a0)
+				add.l	#1000000,d0
+
+				moveq	#0,d1
+.l00000:
+				add.w	#1,d1
+				sub.l	#100000,d0
+				bge.s	.l00000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,1(a0)
+				add.l	#100000,d0
+
+				moveq	#0,d1
+.l0000:
+				add.w	#1,d1
+				sub.l	#10000,d0
+				bge.s	.l0000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,2(a0)
+				add.l	#10000,d0
+
+				moveq	#0,d1
+.l000:
+				add.w	#1,d1
+				sub.l	#1000,d0
+				bge.s	.l000
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,3(a0)
+				add.l	#1000,d0
+
+				moveq	#0,d1
+.l00:
+				add.w	#1,d1
+				sub.l	#100,d0
+				bge.s	.l00
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,4(a0)
+				add.l	#100,d0
+
+				moveq	#0,d1
+.l0:
+				add.w	#1,d1
+				sub.l	#10,d0
+				bge.s	.l0
+				sub.w	#1,d1
+				add.b	#"0",d1
+				move.b	d1,5(a0)
+				add.l	#10,d0
+
+				add.b	#"0",d0
+				move.b	d0,6(a0)
 				rts
 
 ;=============================================================================
@@ -1915,7 +2019,7 @@ BufferNum:		dc.w	0
 NbLoop:			dc.l	0
 	even
 Text000:		dc.b	"00% / 75%",0
-Text_Score_Life:		dc.b	"SCORE:000000 ",0
+Text_Score:		dc.b	"SCORE:0000000",0
 	even
 
 SinTable:
