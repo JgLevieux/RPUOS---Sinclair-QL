@@ -2,7 +2,7 @@
 
 ; =============================================================================
 BARE_METAL			equ		1
-;TIMER_MODE			equ		1
+TIMER_MODE			equ		1
 
 	ifd BARE_METAL
 ;DOUBLE_BUFFERING	equ		1
@@ -146,7 +146,7 @@ MainLoop:
 			ifd CLEAR_SCREEN_FRAME
 				bsr		ClearScreen						; Complete & simple clear
 			else
-				; Add here targeted clear if needed
+				bsr		CleanPreviousDisplay
 			endif
 
 				;bsr		ClearScreen
@@ -235,17 +235,6 @@ EnnemyCoordForMoveOffest:
 ; Input : a6 - ennemy info
 ;=============================================================================
 MoveEnnemy:
-
-; Erase previous ennemy
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.l	#$28000,a1
-				move.l	(a6),d0			; X
-				sub.b	#4,d0
-				move.l	4(a6),d1		; Y
-				sub.b	#4,d1
-				bsr 	CleanSprite8x8Shifted
-
 ; Get current col
 				moveq	#0,d2
 				move.l	(a6),d0			; X
@@ -329,16 +318,6 @@ MoveEnnemy:
 MovePlayer:
 				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
 				lea		PlayerCoordStartTracing(pc),a6
-
-; Erase previous player
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.l	#$28000,a1
-				move.l	(a3),d0
-				sub.l	#3,d0
-				move.l	4(a3),d1
-				sub.l	#3,d1
-				bsr 	CleanSprite8x8Shifted
 
 ; Keyboard & collisions
 				lea		Keyboard(pc),a1
@@ -528,8 +507,19 @@ MovePlayer:
 
 .EndMovePlayer:
 ; Draw player
+				lea		SpritePlayer_01,a1
 
-				lea		SpritePlayer,a1
+				lea     NbLoop(pc),a0
+                move.l  (a0),d0
+				and.l	#%1100,d0
+
+				lsr.l	#2,d0
+				lsl.l	#7,d0
+				move.l	d0,d1
+				add.l	d1,d1
+				add.l	d0,a1
+				add.l	d1,a1
+
 				move.l	(a3),d0
 				sub.l	#3,d0
 				move.l	4(a3),d1
@@ -1023,15 +1013,6 @@ MoveOneQLixCoord:
 MoveQLix:
 ;	DBGBREAK
 
-; Erase previous QLix
-				lea		QLixCoord(pc),a1
-				move.l	16(a1),d0
-				move.l	20(a1),d1
-				move.l	24(a1),d4
-				move.l	28(a1),d5
-				move.l	#ColorPixelBlack,d6
-				bsr		DrawLineQLix
-
 ; Make the two points at good distance
 				lea		QLixCoord(pc),a1
 				lea		QLixVelocity(pc),a2
@@ -1190,6 +1171,52 @@ DisplayLife:
 .0life:
 				rts
 
+;=============================================================================
+; Clean all previous things displayed at the same time at the start of the frame
+;=============================================================================
+CleanPreviousDisplay:
+; Erase previous QLix
+				lea		QLixCoord(pc),a1
+				move.l	16(a1),d0
+				move.l	20(a1),d1
+				move.l	24(a1),d4
+				move.l	28(a1),d5
+				move.l	#ColorPixelBlack,d6
+				bsr		DrawLineQLix
+
+; Erase previous player
+				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	#$28000,a1
+				move.l	(a3),d0
+				sub.l	#3,d0
+				move.l	4(a3),d1
+				sub.l	#3,d1
+				bsr 	CleanSprite8x8Shifted
+
+; Erase previous ennemies
+				lea		Ennemy01(pc),a6
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	#$28000,a1
+				move.l	(a6),d0			; X
+				sub.b	#4,d0
+				move.l	4(a6),d1		; Y
+				sub.b	#4,d1
+				bsr 	CleanSprite8x8Shifted
+
+				lea		Ennemy02(pc),a6
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	#$28000,a1
+				move.l	(a6),d0			; X
+				sub.b	#4,d0
+				move.l	4(a6),d1		; Y
+				sub.b	#4,d1
+				bsr 	CleanSprite8x8Shifted
+
+				rts
 ;=============================================================================
 ; Collision info
 ; d0 : x (0-191)
@@ -1846,7 +1873,7 @@ BufferNum:		dc.w	0
 	even
 NbLoop:			dc.l	0
 	even
-Text000:		dc.b	"00%/75%",0
+Text000:		dc.b	"00% / 75%",0
 Text_Score_Life:		dc.b	"SCORE:000000 ",0
 	even
 
@@ -1869,8 +1896,15 @@ SinTable:
                 dc.w    -92, -86, -80, -74, -68, -62, -56, -50, -44, -37, -31, -25, -19, -13, -6, 0
 	even
 
-SpritePlayer:	incbin		"Data\QLixPlayer.bin"
+SpritePlayer_01:	incbin		"Data\QLixPlayer01.bin"
 	even
+SpritePlayer_02:	incbin		"Data\QLixPlayer02.bin"
+	even
+SpritePlayer_03:	incbin		"Data\QLixPlayer03.bin"
+	even
+SpritePlayer_04:	incbin		"Data\QLixPlayer04.bin"
+	even
+
 SpriteEnnemy_01:	incbin		"Data\QLixEnnemy01.bin"
 	even
 SpriteEnnemy_02:	incbin		"Data\QLixEnnemy02.bin"
