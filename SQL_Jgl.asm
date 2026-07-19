@@ -2,7 +2,7 @@
 
 ; =============================================================================
 BARE_METAL			equ		1
-TIMER_MODE			equ		1
+;TIMER_MODE			equ		1
 
 	ifd BARE_METAL
 ;DOUBLE_BUFFERING	equ		1
@@ -165,9 +165,9 @@ MainLoop:
 				beq.s	.nobreakpoint
 				;DBGBREAK
 				;bsr		ClearScreen
-				;bsr		DebugDisplayQLixColInfo
+				bsr		DebugDisplayQLixColInfo
 
-				bsr		PlayTune
+				;bsr		PlayTune
 				;lea		SoundCommand(pc),a3
 				;move.b	#$11,d0					; MT.lPCOM
 				;trap	#1
@@ -611,6 +611,10 @@ FillPlayField:
 				lea		FloodFillingStack,a6
 				lea		FloodFillingStack,a5
 				
+;9794414 : 1,3s
+;9789900 cycles
+
+				DBGBREAK
 ; Coord to start flood scanline filling
 ; First we fill the Qix region
 				lea		QLixCoord(pc),a3
@@ -636,6 +640,9 @@ FillPlayField:
 				moveq	#0,d4
 				moveq	#0,d5
 
+				lea		QLixCollision(pc),a0
+				move.l	a0,a4
+
 .loopfilling:
 				cmp.l	a6,a5					; Nothing in the filling stack
 				beq.w	.endfilling
@@ -643,103 +650,126 @@ FillPlayField:
 				move.b	(a6)+,d5				; Get Y
 				move.b	(a6)+,d4				; Get X
 
-				lea		QLixCollision(pc),a0
-				add.w	d4,a0		; X
-				move.w	d5,d1
-				lsl.w	#6,d1		; *64
-				move.w	d1,d0
-				add.w	d0,d0		; *128
-				add.w	d1,a0
-				add.w	d0,a0		; *192 (Y)
-
-				;DBGBREAK
+				move.l	a4,a0
+				add.l	d4,a0		; X
+				move.l	d5,d1
+				lsl.l	#6,d1		; *64
+				move.l	d1,d0
+				add.l	d0,d0		; *128
+				add.l	d1,a0
+				add.l	d0,a0		; *192 (Y)
 
 				add.l	#1,a0		; for the first -(a0)
-				add.b	#1,d4
-			
+				addq.w	#1,d4
+
+				move.l	d5,d0
+				addq.w	#1,d0
+				move.l	d5,d1
+				subq.w	#1,d1
+				
 .scanleft:
-				sub.b	#1,d4
+				subq.w	#1,d4
 				tst.b	-(a0)					;like cmp.b	#COL_INFO_NOTHING,-(a0)
 				beq.s	.scanleft
 
-				add.b	#1,d4					; Return to the valid pixel on the right.
+				addq.w	#1,d4					; Return to the valid pixel on the right.
 				add.l	#1,a0
-
+				
 				moveq	#0,d6					; Above flag
 				moveq	#0,d7					; Below flag
 .filltotheright:
 				move.b	d3,(a0)+				; Set to COL_INFO_FILLING
 
-				tst.b	-193(a0)				; like cmp.b	#COL_INFO_NOTHING,-192(a0)
+				tst.b	-193(a0)				; like cmp.b	#COL_INFO_NOTHING,-193(a0)
 				bne.s	.somethingabove
 				tst.b	d6
 				bne.s	.testbelow				; Do not stock new line until we get a new one
 				moveq	#1,d6					; Set above flag
 				move.b	d4,-(a6)
-				move.b	d5,d1
-				sub.b	#1,d1
 				move.b	d1,-(a6)				; Push next line to filling at previous pixel
 				bra.s	.testbelow
 .somethingabove:
 				moveq	#0,d6					; Nothing above, reset above flag
 .testbelow:
-				tst.b	191(a0)					; like cmp.b	#COL_INFO_NOTHING,192(a0)
+				tst.b	191(a0)					; like cmp.b	#COL_INFO_NOTHING,191(a0)
 				bne.s	.somethingbelow
 				tst.b	d7
 				bne.s	.fillnext				; Do not stock new line until we get a new one
 				moveq	#1,d7					; Set above flag
 				move.b	d4,-(a6)
-				move.b	d5,d1
-				add.b	#1,d1
-				move.b	d1,-(a6)				; Push next line to filling at previous pixel
+				move.b	d0,-(a6)				; Push next line to filling at previous pixel
 				bra.s	.fillnext
 .somethingbelow:
 				moveq	#0,d7					; Nothing below, reset below flag
 .fillnext:
 
-				add.b	#1,d4					; Fill next pixel
+				addq.w	#1,d4					; Fill next pixel
 				tst.b	(a0)					; like cmp.b	#COL_INFO_NOTHING,(a0)
 				beq.s	.filltotheright
 
 				bra.s	.loopfilling
 				
 .endfilling:
-				;DBGBREAK
+				DBGBREAK
 
 ; Find Way that must be Old Way
-				move.l	#COL_INFO_WAY,d0
-				move.l	#COL_INFO_FILLING,d1
-				move.l	#COL_INFO_WAS_A_WAY,d2
+; 1937208 cycles ; 0.25s
+; Optimized with the help of Gemini
+                moveq   #COL_INFO_WAY,d0
+                moveq   #COL_INFO_FILLING,d1
+                moveq   #COL_INFO_WAS_A_WAY,d2
 
-				lea		QLixCollision(pc),a0
-				move.l	#192*192-1,d7
-.RemoveOldWay:
-				cmp.b	(a0)+,d0
-				bne.s	.noway
+                lea     QLixCollision(pc),a0
+                move.w  #(192*192)/4-1,d7       ; /4 as we test 4 pixels per loop
 
-				cmp.b	191-1(a0),d1
-				beq.s	.noway
-				cmp.b	192-1(a0),d1
-				beq.s	.noway
-				cmp.b	193-1(a0),d1
-				beq.s	.noway
-				cmp.b	-191-1(a0),d1
-				beq.s	.noway
-				cmp.b	-192-1(a0),d1
-				beq.s	.noway
-				cmp.b	-193-1(a0),d1
-				beq.s	.noway
-				cmp.b	-1-1(a0),d1
-				beq.s	.noway
-				cmp.b	1-1(a0),d1
-				beq.s	.noway
-.setoldway:
+				bra.s	.scan_loop
+	macro DoAWay
+.is_way\1:
+				cmp.b	-2(a0),d1               ; Gauche
+				beq.s	.ret\1
+				cmp.b	0(a0),d1                ; Droite
+				beq.s	.ret\1
+				cmp.b	-193(a0),d1             ; Haut
+				beq.s	.ret\1
+				cmp.b	191(a0),d1              ; Bas
+				beq.s	.ret\1
+				cmp.b	-194(a0),d1             ; Haut-Gauche
+				beq.s	.ret\1
+				cmp.b	-192(a0),d1             ; Haut-Droite
+				beq.s	.ret\1
+				cmp.b	190(a0),d1              ; Bas-Gauche
+				beq.s	.ret\1
+				cmp.b	192(a0),d1              ; Bas-Droite
+				beq.s	.ret\1
+				
 				move.b	d2,-1(a0)
-.noway:
-				dbra	d7,.RemoveOldWay
+				bra.s	.ret\1
+	endm
+	
+				DoAWay 1
+				DoAWay 2						; 1 & 2 here to allow .s for jump
+	
+.scan_loop:
+				cmp.b	(a0)+,d0
+				beq.s	.is_way1
+.ret1:
+				cmp.b	(a0)+,d0
+				beq.s	.is_way2
+.ret2:
+				cmp.b	(a0)+,d0
+				beq.s	.is_way3
+.ret3:
+				cmp.b	(a0)+,d0
+				beq		.is_way4
+.ret4:
+				dbra	d7,.scan_loop
+				bra.w	.end_scan
 
+				DoAWay 3
+				DoAWay 4						; 3 & 4 here to allow .s for jump
+.end_scan:
 				;bsr		DebugDisplayQLixColInfo
-				;DBGBREAK
+				DBGBREAK
 
 ; Now we fill the other part and clean the qix region
 				lea		QLixCollision(pc),a0
@@ -1175,6 +1205,10 @@ DisplayLife:
 ; Clean all previous things displayed at the same time at the start of the frame
 ;=============================================================================
 CleanPreviousDisplay:
+
+				;DBGBREAK
+
+
 ; Erase previous QLix
 				lea		QLixCoord(pc),a1
 				move.l	16(a1),d0
@@ -1215,6 +1249,8 @@ CleanPreviousDisplay:
 				move.l	4(a6),d1		; Y
 				sub.b	#4,d1
 				bsr 	CleanSprite8x8Shifted
+
+				;DBGBREAK
 
 				rts
 ;=============================================================================
@@ -1528,13 +1564,12 @@ NumberToAscii_00:
 ;
 ; TODO : 
 ;	- optimiser avec du .b/.w (255 max pour les coord)
-;	- optimiser en enlevant le lea en trop en fin de rept
 ;=============================================================================
 DisplaySprite16x16MaskedShifted:
 				;DBGBREAK
 				move.l	d0,d3
 				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
+				add.l	d0,d0			; *2
 				lsl.l	#7,d1			; y*128
 				add.l	d1,a0			; +y screen
 				add.l	d0,a0			; +x screen
@@ -1544,7 +1579,7 @@ DisplaySprite16x16MaskedShifted:
 				move.l	d3,d1
 				lsl.l	#2,d3			; *4
 				lsl.l	#8,d3			; *256
-				lsl.l	#1,d1			; *2
+				add.l	d1,d1			; *2
 				lsl.l	#8,d1			; *256
 				lsl.l	#6,d2			; *64
 				add.l	d3,d2			;
@@ -1553,23 +1588,40 @@ DisplaySprite16x16MaskedShifted:
 				add.l	d2,a1			; a1 = sprite
 				move.l	a1,a2
 				lea		160*5(a2),a2		; a2 = mask
+
+				move.w  #118,d1
+                
+			rept 16  ; lines
+					move.l  (a0),d0
+					and.l   (a2)+,d0
+					or.l    (a1)+,d0
+					move.l  d0,(a0)+
+					
+					move.l  (a0),d0
+					and.l   (a2)+,d0
+					or.l    (a1)+,d0
+					move.l  d0,(a0)+
+
+					move.w  (a0),d0
+					and.w   (a2)+,d0
+					or.w    (a1)+,d0
+					move.w  d0,(a0)+
+					
+					adda.w  d1,a0
+			endr
+				
+	if 0
 		rept 16	; lines
-	if 1 ; 1 = Mask on
 			rept 5 ; words
 				move.w	(a0),d0			; Get the pixels on the screen
 				and.w	(a2)+,d0		; Apply sprite mask
 				or.w	(a1)+,d0		; Apply sprite color
 				move.w	d0,(a0)+		; Write final pixel
 			endr
-
-	else
-			rept 5 ; words
-				move.w	(a1)+,(a0)+
-			endr
-	endif
-				
+		
 				lea		118(a0),a0
 		endr
+	endif
 				rts
 
 	
@@ -1587,12 +1639,11 @@ DisplaySprite16x16MaskedShifted:
 ;
 ; TODO : 
 ;	- optimiser avec du .b/.w (255 max pour les coord)
-;	- optimiser en enlevant le lea en trop en fin de rept
 ;=============================================================================
 DisplaySprite8x8MaskedShifted:
 				move.l	d0,d3
 				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
+				add.l	d0,d0			; *2
 				lsl.l	#7,d1			; y*128
 				add.l	d1,a0			; +y screen
 				add.l	d0,a0			; +x screen
@@ -1606,23 +1657,22 @@ DisplaySprite8x8MaskedShifted:
 				add.l	d2,a1			; a1 = sprite
 				move.l	a1,a2
 				lea		48(a2),a2		; a2 = mask
-		rept 8	; lines
-	if 1 ; 1 = Mask on
-			rept 3 ; words
-				move.w	(a0),d0			; Get the pixels on the screen
-				and.w	(a2)+,d0		; Apply sprite mask
-				or.w	(a1)+,d0		; Apply sprite color
-				move.w	d0,(a0)+		; Write final pixel
+			
+				move.w  #122,d1
+                
+			rept 8  ; lines
+					move.l  (a0),d0
+					and.l   (a2)+,d0
+					or.l    (a1)+,d0
+					move.l  d0,(a0)+
+					
+					move.w  (a0),d0
+					and.w   (a2)+,d0
+					or.w    (a1)+,d0
+					move.w  d0,(a0)+
+					
+					adda.w  d1,a0
 			endr
-
-	else
-			rept 3 ; words
-				move.w	(a1)+,(a0)+
-			endr
-	endif
-				
-				lea		122(a0),a0
-		endr
 				rts
 				
 ;=============================================================================
@@ -1651,9 +1701,9 @@ CleanSprite8x8Shifted:
 				add.l	d1,a1			; source adr
 						
 		rept 8	; lines
-			rept 3 ; words
+				move.l	(a1)+,(a0)+
 				move.w	(a1)+,(a0)+
-			endr
+
 				lea		122(a0),a0
 				lea		122(a1),a1
 		endr
@@ -1677,33 +1727,35 @@ CleanSprite8x8Shifted:
 ;=============================================================================
 DisplaySprite8x8:
 				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
+				add.l	d0,d0			; *2
 				lsl.l	#7,d1			; y*128
 				add.l	d1,a0			; +y screen
 				add.l	d0,a0			; +x screen
-						
-		rept 8	; lines
-			rept 2 ; words
-				move.w	(a1)+,(a0)+
-			endr
-				
-				lea		124(a0),a0
-		endr
+
+				move.l  (a1)+,(a0)
+				move.l  (a1)+,128(a0)
+				move.l  (a1)+,256(a0)
+				move.l  (a1)+,384(a0)
+				move.l  (a1)+,512(a0)
+				move.l  (a1)+,640(a0)
+				move.l  (a1)+,768(a0)
+				move.l  (a1)+,896(a0)
+
 				rts
 
 DisplaySprite16x16:
 				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
+				add.l	d0,d0			; *2
 				lsl.l	#7,d1			; y*128
 				add.l	d1,a0			; +y screen
 				add.l	d0,a0			; +x screen
-						
+
+				move.w	#120,d0
 		rept 16	; lines
-			rept 4 ; words
-				move.w	(a1)+,(a0)+
-			endr
+				move.l	(a1)+,(a0)+
+				move.l	(a1)+,(a0)+
 				
-				lea		120(a0),a0
+				add.w	d0,a0
 		endr
 				rts
 
@@ -1730,9 +1782,8 @@ ClearSprite8x8MaskedShifted:
 				add.l	d0,a0			; +x screen
 						
 		rept 8	; lines
-			rept 3 ; words
-				move.w	#0,(a0)+
-			endr
+				clr.l	(a0)+
+				clr.w	(a0)+
 				lea		122(a0),a0
 		endr
 				rts
@@ -1754,32 +1805,38 @@ ClearSprite8x8MaskedShifted:
 ; =============================================================================
 ClearSprite8x8:
 				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
+				add.l	d0,d0			; *2
 				lsl.l	#7,d1			; y*128
 				add.l	d1,a0			; +y screen
 				add.l	d0,a0			; +x screen
 						
-		rept 8	; lines
-			rept 2 ; words
-				move.w	#$0,(a0)+
-			endr
-				lea		124(a0),a0
-		endr
+				moveq   #0,d0
+                move.l  d0,(a0)
+                move.l  d0,128(a0)
+                move.l  d0,256(a0)
+                move.l  d0,384(a0)
+                move.l  d0,512(a0)
+                move.l  d0,640(a0)
+                move.l  d0,768(a0)
+                move.l  d0,896(a0)
+
 				rts
 
 ClearSprite16x16:
 				lsr.l	#2,d0			; /4, 4 pixels per word.
-				lsl.l	#1,d0			; *2
+				add.l	d0,d0			; *2
 				lsl.l	#7,d1			; y*128
 				add.l	d1,a0			; +y screen
 				add.l	d0,a0			; +x screen
 						
-		rept 16	; lines
-			rept 4 ; words
-				move.w	#$0,(a0)+
-			endr
-				lea		120(a0),a0
+				moveq   #0,d0
+                move.w  #120,d1
+		rept 16
+				move.l  d0,(a0)+
+				move.l  d0,(a0)+
+				adda.w  d1,a0
 		endr
+
 				rts
 
 ; =============================================================================
@@ -1789,29 +1846,13 @@ ClearSprite16x16:
 ; Destroy : d0
 ; =============================================================================
 WaitVBlank:
-	if 1 ; // from https://www.chibiakumas.com/68000/sinclairql.php
+; from https://www.chibiakumas.com/68000/sinclairql.php
 			   move.b #%11111111,$18021    ;Clear interrupt bits
 waitVBlankAgain:
 				move.b $18021,d0            ;Read in interrupt state
 				tst.b d0                    ;Wait for an interrupt
 				beq waitVBlankAgain
-	else
-		ifd BARE_METAL ; From gemini, not really tested, probably not working
-				move.b	#8,$18021		; arme uniquement le bit 3 (frame interrupt)
-WaitVBlankLoop:
-				move.b	$18021,d0		; lit le registre de la puce zx8302
-				btst	#3,d0			; teste rigoureusement le bit 3
-				beq		WaitVBlankLoop	; boucle tant que l'image n'est pas finie
-				move.b	#0,$18021		; acquitte (efface) l'interruption avant de sortir
-		else
-				moveq	#$0b,d0			; code de la fonction mt.susjb (suspendre la tache)
-				moveq	#1,d3 			; timeout de 1 tick (1 trame de 1/50e sec)
-				suba.l	a1,a1			; a1=0 signifie que l'on suspend la tache courante
-				trap	#1				; appel au qdos
-		endif
-	endif
 				rts
-				
 
 ; =============================================================================
 ; Clear screen
