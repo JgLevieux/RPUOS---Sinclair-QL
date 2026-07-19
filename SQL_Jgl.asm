@@ -5,7 +5,7 @@ BARE_METAL			equ		1
 ;TIMER_MODE			equ		1
 
 	ifd BARE_METAL
-;DOUBLE_BUFFERING	equ		1
+DOUBLE_BUFFERING	equ		1
 	else
 ;CLEAR_SCREEN_FRAME	equ		1
 	endif
@@ -156,16 +156,16 @@ MainLoop:
 			endif
 
 				;bsr		ClearScreen
-				bsr		UpdateTimer
 				
 				lea		Ennemy01(pc),a6
-				bsr		MoveEnnemy
+				;bsr		MoveEnnemy
 				lea		Ennemy02(pc),a6
-				bsr		MoveEnnemy
-
+				;bsr		MoveEnnemy
 				bsr		MovePlayer
+				;bsr		MoveQLix
 
-				bsr		MoveQLix
+				bsr		UpdateTimer
+				bsr		DrawAll
 
 				lea		Keyboard(pc),a1
 				move.b	1(a1),d4					; d4 = bits clavier
@@ -242,6 +242,126 @@ EnnemyCoordForMoveOffest:
 	dc.b	-1,0	; L
 	dc.b	0,-1	; U
 
+	
+;=============================================================================
+; Clean all previous things displayed at the same time at the start of the frame
+;=============================================================================
+CleanPreviousDisplay:
+				lea		BufferNum(pc),a6
+				moveq	#0,d7
+				move.w	(a6),d7
+
+; Erase previous player
+				lea		PlayerSave(pc),a1
+				move.l	d7,d6
+				lsl.l	#6,d6
+				add.l	d6,a1
+
+				move.l	(a1),d0
+				move.l	4(a1),d1
+				add.l	#8,a1
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				bsr		BackSprite8x8Shifted
+
+; Erase previous QLix
+				lea		QLixCoord(pc),a1
+				move.l	16(a1),d0
+				move.l	20(a1),d1
+				move.l	24(a1),d4
+				move.l	28(a1),d5
+				move.l	#ColorPixelBlack,d6
+				;bsr		DrawLineQLix
+
+; Erase previous player
+				;lea		PlayerCoord(pc),a3		; a3 = Player coord adr
+				;lea		ScreenBase(pc),a0
+				;move.l	(a0),a0
+				;move.l	#$28000,a1
+				;move.l	(a3),d0
+				;sub.l	#3,d0
+				;move.l	4(a3),d1
+				;sub.l	#3,d1
+				;bsr 	CleanSprite8x8Shifted
+
+; Erase previous ennemies
+				lea		Ennemy01(pc),a6
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	#$28000,a1
+				move.l	(a6),d0			; X
+				sub.b	#4,d0
+				move.l	4(a6),d1		; Y
+				sub.b	#4,d1
+				;bsr 	CleanSprite8x8Shifted
+
+				lea		Ennemy02(pc),a6
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				move.l	#$28000,a1
+				move.l	(a6),d0			; X
+				sub.b	#4,d0
+				move.l	4(a6),d1		; Y
+				sub.b	#4,d1
+				;bsr 	CleanSprite8x8Shifted
+
+				;DBGBREAK
+
+				rts
+
+;=============================================================================
+; Draw all
+; First save background
+; Then draw all
+;=============================================================================
+DrawAll:
+				lea		BufferNum(pc),a6
+				moveq	#0,d7
+				move.w	(a6),d7
+
+; Save player
+				lea		PlayerSave(pc),a1
+				move.l	d7,d6
+				lsl.l	#6,d6
+				add.l	d6,a1
+
+				lea		PlayerCoord(pc),a3
+				move.l	(a3),d0
+				sub.l	#3,d0
+				move.l	4(a3),d1
+				sub.l	#3,d1
+				move.l	d0,(a1)
+				move.l	d1,4(a1)
+
+				add.l	#8,a1
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				bsr		SaveSprite8x8Shifted
+
+; Draw player
+				lea		SpritePlayer_01(pc),a1
+
+				lea     NbLoop(pc),a0
+                move.l  (a0),d0
+				and.l	#%1100,d0
+
+				lsr.l	#2,d0
+				lsl.l	#7,d0
+				move.l	d0,d1
+				add.l	d1,d1
+				add.l	d0,a1
+				add.l	d1,a1
+
+				move.l	(a3),d0
+				sub.l	#3,d0
+				move.l	4(a3),d1
+				sub.l	#3,d1
+
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				bsr		DisplaySprite8x8MaskedShifted
+				rts
+				
 ;=============================================================================
 ; Move one ennemy
 ; Input : a6 - ennemy info
@@ -544,28 +664,6 @@ MovePlayer:
 .NoLeft:
 
 .EndMovePlayer:
-; Draw player
-				lea		SpritePlayer_01,a1
-
-				lea     NbLoop(pc),a0
-                move.l  (a0),d0
-				and.l	#%1100,d0
-
-				lsr.l	#2,d0
-				lsl.l	#7,d0
-				move.l	d0,d1
-				add.l	d1,d1
-				add.l	d0,a1
-				add.l	d1,a1
-
-				move.l	(a3),d0
-				sub.l	#3,d0
-				move.l	4(a3),d1
-				sub.l	#3,d1
-
-				lea		ScreenBase,a0
-				move.l	(a0),a0
-				bsr		DisplaySprite8x8MaskedShifted
 				rts
 
 ;=============================================================================
@@ -1300,58 +1398,6 @@ DisplayLife:
 				rts
 
 ;=============================================================================
-; Clean all previous things displayed at the same time at the start of the frame
-;=============================================================================
-CleanPreviousDisplay:
-
-				;DBGBREAK
-
-
-; Erase previous QLix
-				lea		QLixCoord(pc),a1
-				move.l	16(a1),d0
-				move.l	20(a1),d1
-				move.l	24(a1),d4
-				move.l	28(a1),d5
-				move.l	#ColorPixelBlack,d6
-				bsr		DrawLineQLix
-
-; Erase previous player
-				lea		PlayerCoord(pc),a3		; a3 = Player coord adr
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.l	#$28000,a1
-				move.l	(a3),d0
-				sub.l	#3,d0
-				move.l	4(a3),d1
-				sub.l	#3,d1
-				bsr 	CleanSprite8x8Shifted
-
-; Erase previous ennemies
-				lea		Ennemy01(pc),a6
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.l	#$28000,a1
-				move.l	(a6),d0			; X
-				sub.b	#4,d0
-				move.l	4(a6),d1		; Y
-				sub.b	#4,d1
-				bsr 	CleanSprite8x8Shifted
-
-				lea		Ennemy02(pc),a6
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.l	#$28000,a1
-				move.l	(a6),d0			; X
-				sub.b	#4,d0
-				move.l	4(a6),d1		; Y
-				sub.b	#4,d1
-				bsr 	CleanSprite8x8Shifted
-
-				;DBGBREAK
-
-				rts
-;=============================================================================
 ; Collision info
 ; d0 : x (0-191)
 ; d1 : y (0-191)
@@ -1893,6 +1939,62 @@ CleanSprite8x8Shifted:
 				rts
 
 ;=============================================================================
+; Save background for a sprite, 8x8 with shifting, !!! no clipping !!!
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = backup buffer
+; Output : -
+; Destroy :
+;		d0, d1
+;		a0, a1
+;=============================================================================
+SaveSprite8x8Shifted:
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d0,d1			; +y screen +x screen
+				add.l	d1,a0			; dest adr
+						
+		rept 7	; lines
+				move.l	(a0)+,(a1)+
+				move.w	(a0)+,(a1)+
+				lea		122(a0),a0
+		endr
+				move.l	(a0)+,(a1)+
+				move.w	(a0)+,(a1)+
+				rts
+				
+;=============================================================================
+; Draw on the background from saved buffer, 8x8 with shifting, !!! no clipping !!!
+; Input : -
+;		d0.l = x
+;		d1.l = y
+;		a0 = screen base
+;		a1 = backup buffer
+; Output : -
+; Destroy :
+;		d0, d1
+;		a0, a1
+;=============================================================================
+BackSprite8x8Shifted:
+				lsr.l	#2,d0			; /4, 4 pixels per word.
+				add.l	d0,d0			; *2
+				lsl.l	#7,d1			; y*128
+				add.l	d0,d1			; +y screen +x screen
+				add.l	d1,a0			; dest adr
+						
+		rept 7	; lines
+				move.l	(a1)+,(a0)+
+				move.w	(a1)+,(a0)+
+				lea		122(a0),a0
+		endr
+				move.l	(a1)+,(a0)+
+				move.w	(a1)+,(a0)+
+				rts
+				
+;=============================================================================
 ; Display a sprite, 8x8 no mask, no shifting, !!! no clipping !!!
 ; Input : -
 ;		d0.l = x
@@ -2142,6 +2244,9 @@ SpriteHeart:	incbin			"Data\QLixHeart.bin"
 Font:			incbin 		"Data\Font8x8.bin"				
 	even
 
+PlayerSave:		dcb.b	(2*4+8*6+8)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 8 (padding for 64 bytes size)) * 2 framebuffer
+	
+	
 				dcb.b	2048,0
 TopOfStack:
 	even
