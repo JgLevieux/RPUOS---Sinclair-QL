@@ -416,13 +416,34 @@ DrawAll:
 				move.l	d4,8(a1)
 				move.l	d5,12(a1)
 				move.l	#ColorPixelWhite,d6
-				bsr		DrawLineQLix
-				
-				;cmp.l	#ColorPixelRed,a6		; Any pixel of the drawline touch player line?
-				;bne.s	.noplayercollide
-				;bsr		TouchPlayerTracing
-;.noplayercollide:
 
+				cmp.w	#PLAYFIELD_START_X,d0
+				bmi.s	.QlixOut
+				cmp.w	#PLAYFIELD_START_Y,d1
+				bmi.s	.QlixOut
+
+				cmp.w	#191+PLAYFIELD_START_X,d0
+				bhi.s	.QlixOut
+				cmp.w	#191+PLAYFIELD_START_Y,d1
+				bhi.s	.QlixOut
+
+				bsr		DrawLineQLix
+
+				cmp.l	#COL_INFO_TRACING,a6		; Any pixel of the drawline touch player line?
+				bne.s	.noplayercollide
+				lea		PlayerMustDie(pc),a0
+				move.l	#1,(a0)
+				bra		.ContinueDraw
+				;DBGBREAK
+.noplayercollide:
+				cmp.l	#0,a6		; Any pixel of the drawline touch player line?
+				beq.s	.ContinueDraw
+				DBGBREAK
+				bra		.ContinueDraw
+.QlixOut:
+				DBGBREAK
+
+.ContinueDraw:
 ; Draw ennemies 01 & 02
 				lea		SpriteEnnemy_01(pc),a1
 				lea		Ennemy01(pc),a3
@@ -541,6 +562,7 @@ DIST_COL_ENNEMY_PLAYER		equ 2
 				
 				lea		PlayerMustDie(pc),a0
 				move.l	#1,(a0)
+				;DBGBREAK
 
 .endcollideennemy:
 				rts
@@ -1235,6 +1257,7 @@ MoveOneQLixCoord:
 .collidetracing:
 				lea		PlayerMustDie(pc),a0
 				move.l	#1,(a0)
+				;DBGBREAK
 				bra.s	.endcollide
 
 .nocollideY:
