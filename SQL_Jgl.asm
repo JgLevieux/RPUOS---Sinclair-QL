@@ -85,29 +85,7 @@ MainLoop:
 				move.b	#ScreenMode01,$18063			; Display screen 1
 			endif
 
-			; Double buffering
-			ifd DOUBLE_BUFFERING				
-				lea		ScreenBase(pc),a0
-				lea		BufferNum(pc),a1
-				move.l	(a0),d0
-				cmp.l	#$20000,d0
-				beq.s	.swapscreen1
-				
-				move.l	#$20000,(a0)					; Draw in screen 1
-				move.b	#ScreenMode02,$18063			; Display screen 2
-				lea		ScreenBaseFront(pc),a0
-				move.l	#$28000,(a0)
-				move.w	#0,(a1)
-				
-				bra.s	.swapscreen2
-.swapscreen1:
-				move.l	#$28000,(a0)					; Draw in screen 2
-				move.b	#ScreenMode01,$18063			; Display screen 1
-				lea		ScreenBaseFront(pc),a0
-				move.l	#$20000,(a0)
-				move.w	#1,(a1)
-.swapscreen2:
-			endif
+				bsr		SwapBuffer
 
 				bsr 	ReadKeyboard
 
@@ -138,34 +116,15 @@ MainLoop:
 				bset	#Keyboard01_Up,1(a1)
 .NoKeyZ:
 
-
 				btst	#Keyboard01_ESC,1(a1)
 				beq.s	.NoESC
-				bsr		ResetQLix
+				bsr		DebugDisplayQLixColInfo
+				;bsr		ResetQLix
 .NoESC:
 
 				lea     NbLoop(pc),a0
 				add.l	#1,(a0)
 				move.l	(a0),d6
-
-			; Clear screen
-			ifd CLEAR_SCREEN_FRAME
-				bsr		ClearScreen						; Complete & simple clear
-			else
-				bsr		CleanPreviousDisplay
-			endif
-
-				;bsr		ClearScreen
-				
-				lea		Ennemy01(pc),a6
-				;bsr		MoveEnnemy
-				lea		Ennemy02(pc),a6
-				;bsr		MoveEnnemy
-				bsr		MovePlayer
-				;bsr		MoveQLix
-
-				bsr		UpdateTimer
-				bsr		DrawAll
 
 				lea		Keyboard(pc),a1
 				move.b	1(a1),d4					; d4 = bits clavier
@@ -173,15 +132,28 @@ MainLoop:
 				beq.s	.nobreakpoint
 				DBGBREAK
 				;bsr		ClearScreen
-				bsr		DebugDisplayQLixColInfo
-
+				;bsr		DebugDisplayQLixColInfo
 				;bsr		PlayTune
-				;lea		SoundCommand(pc),a3
-				;move.b	#$11,d0					; MT.lPCOM
-				;trap	#1
-
 .nobreakpoint:
+				bsr		CleanPreviousDisplay
 
+				lea		PlayerMustDie(pc),a0
+				tst.l	(a0)
+				beq.s	.PlayerMustNotDie
+				move.l	#0,(a0)
+				bsr		BigClean
+				bsr		TouchPlayerTracing
+.PlayerMustNotDie:
+
+				lea		Ennemy01(pc),a6
+				bsr		MoveEnnemy
+				lea		Ennemy02(pc),a6
+				bsr		MoveEnnemy
+				bsr		MovePlayer
+				bsr		MoveQLix
+
+				bsr		UpdateTimer
+				bsr		DrawAll
 
 			ifd TIMER_MODE
 				DisplayOffForProfiling
@@ -190,8 +162,6 @@ MainLoop:
 
                 rts
 
-				
-	
 ;=============================================================================
 	include "controls.asm"
 	include "sound.asm"
@@ -221,6 +191,8 @@ FloodFillingStackBottom:
 FloodFillingStack:
 	even
 
+PlayerMustDie:	dc.l	0
+
 Ennemy01:
 		dc.l	0,0		; 0 : Coord, 4 : Coord Y
 		dc.b	0		; 8 : Current move offest
@@ -242,7 +214,58 @@ EnnemyCoordForMoveOffest:
 	dc.b	-1,0	; L
 	dc.b	0,-1	; U
 
-	
+;=============================================================================
+; Clean all previous things displayed at the same time at the start of the frame
+;=============================================================================
+SwapBuffer:
+			; Double buffering
+			ifd DOUBLE_BUFFERING				
+				lea		ScreenBase(pc),a0
+				lea		BufferNum(pc),a1
+				move.l	(a0),d0
+				cmp.l	#$20000,d0
+				beq.s	.swapscreen1
+				
+				move.l	#$20000,(a0)					; Draw in screen 1
+				move.b	#ScreenMode02,$18063			; Display screen 2
+				lea		ScreenBaseFront(pc),a0
+				move.l	#$28000,(a0)
+				move.w	#0,(a1)
+				
+				bra.s	.swapscreen2
+.swapscreen1:
+				move.l	#$28000,(a0)					; Draw in screen 2
+				move.b	#ScreenMode01,$18063			; Display screen 1
+				lea		ScreenBaseFront(pc),a0
+				move.l	#$20000,(a0)
+				move.w	#1,(a1)
+.swapscreen2:
+			endif
+				rts
+
+				
+;=============================================================================
+; Clean one sprite
+; a1 = Save struct adr
+; d7 = Num Buffer
+;=============================================================================
+CleanOneSprite:
+; Erase previous player
+				move.l	d7,d6
+				lsl.l	#6,d6
+				add.l	d6,a1
+				tst.b	56(a1)				; Valid back buffer ?
+				beq.s	.DoNotEraseSprite
+
+				move.l	(a1),d0
+				move.l	4(a1),d1
+				add.l	#8,a1
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				bsr		BackSprite8x8Shifted
+.DoNotEraseSprite:
+				rts
+				
 ;=============================================================================
 ; Clean all previous things displayed at the same time at the start of the frame
 ;=============================================================================
@@ -253,79 +276,61 @@ CleanPreviousDisplay:
 
 ; Erase previous player
 				lea		PlayerSave(pc),a1
-				move.l	d7,d6
-				lsl.l	#6,d6
-				add.l	d6,a1
-
-				move.l	(a1),d0
-				move.l	4(a1),d1
-				add.l	#8,a1
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				bsr		BackSprite8x8Shifted
-
-; Erase previous QLix
-				lea		QLixCoord(pc),a1
-				move.l	16(a1),d0
-				move.l	20(a1),d1
-				move.l	24(a1),d4
-				move.l	28(a1),d5
-				move.l	#ColorPixelBlack,d6
-				;bsr		DrawLineQLix
-
-; Erase previous player
-				;lea		PlayerCoord(pc),a3		; a3 = Player coord adr
-				;lea		ScreenBase(pc),a0
-				;move.l	(a0),a0
-				;move.l	#$28000,a1
-				;move.l	(a3),d0
-				;sub.l	#3,d0
-				;move.l	4(a3),d1
-				;sub.l	#3,d1
-				;bsr 	CleanSprite8x8Shifted
+				bsr		CleanOneSprite
 
 ; Erase previous ennemies
-				lea		Ennemy01(pc),a6
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.l	#$28000,a1
-				move.l	(a6),d0			; X
-				sub.b	#4,d0
-				move.l	4(a6),d1		; Y
-				sub.b	#4,d1
-				;bsr 	CleanSprite8x8Shifted
+				lea		Ennemy02Save(pc),a1
+				bsr		CleanOneSprite
 
-				lea		Ennemy02(pc),a6
-				lea		ScreenBase(pc),a0
-				move.l	(a0),a0
-				move.l	#$28000,a1
-				move.l	(a6),d0			; X
-				sub.b	#4,d0
-				move.l	4(a6),d1		; Y
-				sub.b	#4,d1
-				;bsr 	CleanSprite8x8Shifted
+				lea		Ennemy01Save(pc),a1
+				bsr		CleanOneSprite
 
-				;DBGBREAK
+; Erase previous QLix
+				lea		QLixCoordSave(pc),a1
+				move.l	d7,d6
+				lsl.l	#4,d6					; *16 for next frame
+				add.l	d6,a1
+				move.l	(a1),d0
+				move.l	4(a1),d1
+				move.l	8(a1),d4
+				move.l	12(a1),d5
+				move.l	#ColorPixelBlack,d6
+				bsr		DrawLineQLix
 
 				rts
 
 ;=============================================================================
-; Draw all
-; First save background
+; Big clean to remove everything from both frame buffer and reset sprite back buffer
+;=============================================================================
+BigClean:
+				bsr		CleanPreviousDisplay
+				bsr		SwapBuffer
+				bsr		CleanPreviousDisplay
+
+				lea		PlayerSave(pc),a1
+				move.b	#0,56(a1)
+				move.b	#0,56+64(a1)					; Invalidate both back buffer
+
+				lea		Ennemy01Save(pc),a1
+				move.b	#0,56(a1)
+				move.b	#0,56+64(a1)					; Invalidate both back buffer
+
+				lea		Ennemy02Save(pc),a1
+				move.b	#0,56(a1)
+				move.b	#0,56+64(a1)					; Invalidate both back buffer
+				rts
+				
+;=============================================================================
+; Save a sprite
+; a1 = Save struct adr
+; a3 = Sprite coord
 ; Then draw all
 ;=============================================================================
-DrawAll:
-				lea		BufferNum(pc),a6
-				moveq	#0,d7
-				move.w	(a6),d7
-
-; Save player
-				lea		PlayerSave(pc),a1
+SaveOneSprite:
 				move.l	d7,d6
 				lsl.l	#6,d6
 				add.l	d6,a1
 
-				lea		PlayerCoord(pc),a3
 				move.l	(a3),d0
 				sub.l	#3,d0
 				move.l	4(a3),d1
@@ -334,13 +339,19 @@ DrawAll:
 				move.l	d1,4(a1)
 
 				add.l	#8,a1
+				move.b	#1,48(a1)				; Validate back buffer
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				bsr		SaveSprite8x8Shifted
+				rts
 
-; Draw player
-				lea		SpritePlayer_01(pc),a1
-
+;=============================================================================
+; Draw a sprite
+; a1 = Save struct adr
+; a3 = Sprite coord
+; Then draw all
+;=============================================================================
+DrawOneSprite:
 				lea     NbLoop(pc),a0
                 move.l  (a0),d0
 				and.l	#%1100,d0
@@ -360,6 +371,72 @@ DrawAll:
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				bsr		DisplaySprite8x8MaskedShifted
+				rts
+				
+;=============================================================================
+; Draw all
+; First save background
+; Then draw all
+;=============================================================================
+DrawAll:
+				lea		BufferNum(pc),a6
+				moveq	#0,d7
+				move.w	(a6),d7
+
+; Save ennemies 01 & 02
+				lea		Ennemy01Save(pc),a1
+				lea		Ennemy01(pc),a3
+				bsr		SaveOneSprite
+
+				lea		Ennemy02Save(pc),a1
+				lea		Ennemy02(pc),a3
+				bsr		SaveOneSprite
+				
+; Save player
+				lea		PlayerSave(pc),a1
+				lea		PlayerCoord(pc),a3
+				bsr		SaveOneSprite
+
+; Draw QLix
+				lea		QLixCoordSave(pc),a1
+				lea		QLixCoord(pc),a3
+				move.l	d7,d6
+				lsl.l	#4,d6					; *16 for next frame
+				add.l	d6,a1
+				move.l	(a3),d0
+				move.l	4(a3),d1
+				move.l	8(a3),d4
+				move.l	12(a3),d5
+				lsr.l	#8,d0
+				lsr.l	#8,d1
+				lsr.l	#8,d4
+				lsr.l	#8,d5
+				move.l	d0,(a1)
+				move.l	d1,4(a1)
+				move.l	d4,8(a1)
+				move.l	d5,12(a1)
+				move.l	#ColorPixelWhite,d6
+				bsr		DrawLineQLix
+				
+				;cmp.l	#ColorPixelRed,a6		; Any pixel of the drawline touch player line?
+				;bne.s	.noplayercollide
+				;bsr		TouchPlayerTracing
+;.noplayercollide:
+
+; Draw ennemies 01 & 02
+				lea		SpriteEnnemy_01(pc),a1
+				lea		Ennemy01(pc),a3
+				bsr		DrawOneSprite
+
+				lea		SpriteEnnemy_01(pc),a1
+				lea		Ennemy02(pc),a3
+				bsr		DrawOneSprite
+
+; Draw player
+				lea		SpritePlayer_01(pc),a1
+				lea		PlayerCoord(pc),a3
+				bsr		DrawOneSprite
+
 				rts
 				
 ;=============================================================================
@@ -437,7 +514,7 @@ MoveEnnemy:
 
 				lea		ScreenBase,a0
 				move.l	(a0),a0
-				bsr		DisplaySprite8x8MaskedShifted
+				;bsr		DisplaySprite8x8MaskedShifted
 
 ; Player collision
 DIST_COL_ENNEMY_PLAYER		equ 2
@@ -461,7 +538,9 @@ DIST_COL_ENNEMY_PLAYER		equ 2
 .nonegy:
 				cmp.l	#DIST_COL_ENNEMY_PLAYER,d3
 				bhi.s	.endcollideennemy
-				bsr		TouchPlayerTracing
+				
+				lea		PlayerMustDie(pc),a0
+				move.l	#1,(a0)
 
 .endcollideennemy:
 				rts
@@ -480,7 +559,6 @@ MovePlayer:
 ; Keyboard & collisions
 				lea		Keyboard(pc),a1
 				move.b	1(a1),d4					; d4 = bits clavier
-				move.l	#$28000,a4
 				moveq	#0,d3
 
 				lea		PlayerIsTracing(pc),a5
@@ -520,7 +598,7 @@ MovePlayer:
 				add.l	#1,4(a6)
 .NotStartTracingUp:
 				move.b	#1,(a5)					; Tracing flag
-				bsr		PlotPixelRed
+				bsr		PlotPixelRed2
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
@@ -564,7 +642,7 @@ MovePlayer:
 				sub.l	#1,4(a6)
 .NotStartTracingDown:
 				move.b	#1,(a5)					; Tracing flag
-				bsr		PlotPixelRed
+				bsr		PlotPixelRed2
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
@@ -608,7 +686,7 @@ MovePlayer:
 				sub.l	#1,(a6)
 .NotStartTracingRight:
 				move.b	#1,(a5)					; Tracing flag
-				bsr		PlotPixelRed
+				bsr		PlotPixelRed2
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
@@ -653,7 +731,7 @@ MovePlayer:
 				add.l	#1,(a6)
 .NotStartTracingLeft:
 				move.b	#1,(a5)					; Tracing flag
-				bsr		PlotPixelRed
+				bsr		PlotPixelRed2
 				move.l	(a3),d0
 				move.l	4(a3),d1
 				move.l	#COL_INFO_TRACING,d2
@@ -746,6 +824,8 @@ PreviousFillingCounter: dc.l 0
 
 FillPlayField:
                 movem.l d0-d7/a0-a6,-(sp)
+
+				bsr		BigClean
 
 				lea		PreviousFillingCounter(pc),a5
 				lea		FillingCounter(pc),a6
@@ -943,19 +1023,11 @@ FillPlayField:
 
 				add.l	#185,(a6)						; Inc filling counter
 
-				lea		$20000,a4
 				move.w	d4,d0
 				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelCyan
-
-				move.l	#$28000,a4
-				move.w	d4,d0
-				add.w	#PLAYFIELD_START_X,d0
-				move.w	d5,d1
-				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelCyan
+				bsr		PlotPixelCyan2
 				bra.s	.doloop
 
 .tobefilledborder:
@@ -963,19 +1035,11 @@ FillPlayField:
 
 				add.l	#185,(a6)						; Inc filling counter
 
-				lea		$20000,a4
 				move.w	d4,d0
 				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelWhite
-
-				move.l	#$28000,a4
-				move.w	d4,d0
-				add.w	#PLAYFIELD_START_X,d0
-				move.w	d5,d1
-				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelWhite
+				bsr		PlotPixelWhite2
 				bra.s	.doloop
 				
 .isfilling:
@@ -988,7 +1052,6 @@ FillPlayField:
 				add.w	#1,d5
 				dbra	d7,.loopY
 
-				
 ; Update Score.
 				lea		PreviousFillingCounter(pc),a5
 				lea		FillingCounter(pc),a6
@@ -1019,8 +1082,6 @@ FillPlayField:
 TouchPlayerTracing:
                 movem.l d0-d7/a0-a6,-(sp)
 
-				bsr		CleanPreviousDisplay
-
 				moveq	#0,d5		; Y screen
 				
 				move.l	#192-1,d7	; Nb lines
@@ -1044,19 +1105,11 @@ TouchPlayerTracing:
 
 				move.b	#COL_INFO_NOTHING,-1(a0)
 
-				lea		$20000,a4
 				move.w	d4,d0
 				add.w	#PLAYFIELD_START_X,d0
 				move.w	d5,d1
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelBlack
-
-				lea		$28000,a4
-				move.w	d4,d0
-				add.w	#PLAYFIELD_START_X,d0
-				move.w	d5,d1
-				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelBlack
+				bsr		PlotPixelBlack2
 				bra.s	.doloop
 
 .isfilling:
@@ -1089,7 +1142,9 @@ TouchPlayerTracing:
 				rts
 
 	even
-QLixCoord:		dcb.l	8 ; 2 coord * 2
+QLixCoord:		dcb.l	2*2,0				; coord.l * 2 (x, Y) * 2 point (for the line)
+	even
+QLixCoordSave:	dcb.l	2*2*2,0				; coord.l * 2 (x, Y) * 2 point (for the line) * 2 (nb frame)
 	even
 QLixVelocity:	dc.l	256,-128,128,-256
 	even
@@ -1178,7 +1233,8 @@ MoveOneQLixCoord:
 				bra.s	.endcollide
 
 .collidetracing:
-				bsr		TouchPlayerTracing
+				lea		PlayerMustDie(pc),a0
+				move.l	#1,(a0)
 				bra.s	.endcollide
 
 .nocollideY:
@@ -1261,32 +1317,10 @@ MoveQLix:
 				move.l	#QLIX_MAX_VELOCITY,4(a2)
 .capy1:
 				cmp.l	#-QLIX_MAX_VELOCITY,12(a2)
-				bge.s	.drawqlix
+				bge.s	.endmoveqlix
 				move.l	#-QLIX_MAX_VELOCITY,12(a2)
-				
-; Draw QLix
-.drawqlix:
-				lea		QLixCoord(pc),a1
-				move.l	(a1),d0
-				move.l	4(a1),d1
-				move.l	8(a1),d4
-				move.l	12(a1),d5
-				lsr.l	#8,d0
-				lsr.l	#8,d1
-				lsr.l	#8,d4
-				lsr.l	#8,d5
-				move.l	d0,16(a1)
-				move.l	d1,20(a1)
-				move.l	d4,24(a1)
-				move.l	d5,28(a1)
-				move.l	#ColorPixelWhite,d6
-				bsr		DrawLineQLix
-				
-				cmp.l	#ColorPixelRed,a6		; Any pixel of the drawline touch player line?
-				bne.s	.noplayercollide
-				bsr		TouchPlayerTracing
-.noplayercollide:
-				
+
+.endmoveqlix:
 				rts
 
 ;=============================================================================
@@ -1353,10 +1387,16 @@ UpdateTimer:
 				
 ;=============================================================================
 ; Update life
+; a2 : frame buffer
 ;=============================================================================
 DisplayLife:
+				move.l	#1,d7
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a2
+				lea		ScreenBaseFront(pc),a6
+				move.l	(a6),a6
+
+.loopdispaylife:
 				lea		PlayerLife(pc),a3
 
 				lea		SpriteHeart(pc),a1
@@ -1395,6 +1435,10 @@ DisplayLife:
 .not1life:
 				bsr		ClearSprite16x16
 .0life:
+
+				move.l	a6,a2					; Set next frame buffer to draw
+				dbra	d7,.loopdispaylife
+
 				rts
 
 ;=============================================================================
@@ -1453,17 +1497,9 @@ ErrorColCoord:
 				rts
 
 ; For debug purpose only
-	macro PlotDebug
-				;DBGBREAK
-				move.w	d4,d0
-				move.w	d5,d1
-				bsr		PlotPixel\1
-	endm
 DebugDisplayQLixColInfo:
 				movem.l d0-d7/a0-a6,-(sp)
 				lea		QLixCollision(pc),a0
-				lea		ScreenBase(pc),a4
-				move.l	(a4),a4
 
 				moveq	#PLAYFIELD_START_Y,d5	; Y screen
 				
@@ -1489,19 +1525,29 @@ DebugDisplayQLixColInfo:
 				cmp.b	#COL_INFO_WAS_A_WAY,d0
 				beq.s	.isBlue
 
-				PlotDebug <Yellow>
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixelYellow2
 				bra.s	.doloop
 .isRed:
-				PlotDebug <Red>
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixelRed2
 				bra.s	.doloop
 .isGreen:
-				PlotDebug <Green>
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixelGreen2
 				bra.s	.doloop
 .isBlue:
-				PlotDebug <Blue>
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixelBlue2
 				bra.s	.doloop
 .isWhite:
-				PlotDebug <White>
+				move.w	d4,d0
+				move.w	d5,d1
+				bsr		PlotPixelWhite2
 				
 .doloop:				
 				add.w	#1,d4
@@ -1596,8 +1642,14 @@ COL_BORDER_SIZE equ	3
 				CleanVarB PlayerIsTracing,a0
 				CleanVarL FillingCounter,a0
 				CleanVarL Score,a0
+				CleanVarL PlayerMustDie,a0
 				lea		PlayerLife(pc),a0
 				move.b	#NB_LIFE_START,(a0)
+
+				lea		PlayerSave(pc),a0
+				move.b	#0,56(a0)
+				move.b	#0,56+64(a0)					; Invalidate both back buffer
+
 
 ; Timer
 				lea		Timer(pc),a0
@@ -1612,10 +1664,6 @@ COL_BORDER_SIZE equ	3
 				move.l	#128*256,4(a0)			; 24:8 format (*256)
 				move.l	#132*256,8(a0)
 				move.l	#132*256,12(a0)			; 24:8 format (*256)
-				move.l	#128*256,16(a0)
-				move.l	#128*256,20(a0)			; 24:8 format (*256)
-				move.l	#132*256,24(a0)
-				move.l	#132*256,28(a0)			; 24:8 format (*256)
 
 ; Display static texts
 				bsr		UpdateText
@@ -1635,10 +1683,19 @@ ResetEnnemiesPosition:
 				move.l	#47+COL_BORDER_SIZE,4(a0)
 				move.b	#2,8(a0)
 
+				lea		Ennemy01Save(pc),a0
+				move.b	#0,56(a0)
+				move.b	#0,56+64(a0)					; Invalidate both back buffer
+
+				
 				lea		Ennemy02(pc),a0
 				move.l	#221-46,(a0)
 				move.l	#47+COL_BORDER_SIZE,4(a0)
 				move.b	#0,8(a0)
+
+				lea		Ennemy02Save(pc),a0
+				move.b	#0,56(a0)
+				move.b	#0,56+64(a0)					; Invalidate both back buffer
 				rts
 
 ;=============================================================================
@@ -1671,7 +1728,16 @@ DisplayText:
 				add.l	d2,a1
 				move.l	d5,d0
 				move.l	d6,d1
+				move.l	a1,a2
 				bsr		DisplaySprite8x8
+
+				lea		ScreenBaseFront(pc),a0
+				move.l	(a0),a0
+				move.l	a2,a1
+				move.l	d5,d0
+				move.l	d6,d1
+				bsr		DisplaySprite8x8
+				
 .next:
 				add.l	#8,d5				; next char 8 pixels to the right
 				
@@ -2004,7 +2070,6 @@ BackSprite8x8Shifted:
 ; Output : -
 ; Destroy :
 ;		d0, d1
-;		a0
 ;
 ; TODO : 
 ;	- optimiser avec du .b (255 max pour les coord)
@@ -2241,10 +2306,12 @@ SpriteEnnemy_04:	incbin		"Data\QLixEnnemy04.bin"
 	even
 SpriteHeart:	incbin			"Data\QLixHeart.bin"
 	even
-Font:			incbin 		"Data\Font8x8.bin"				
+Font:			incbin 		"Data\Font8x8.bin"
 	even
 
-PlayerSave:		dcb.b	(2*4+8*6+8)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 8 (padding for 64 bytes size)) * 2 framebuffer
+PlayerSave:		dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
+Ennemy01Save:	dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
+Ennemy02Save:	dcb.b	(2*4+8*6+1+7)*2		; (2 coord.l (x,y) + sprite8x8 shifted (8 lines * 6 bytes) + 1 (is valid, if not cannot be back on screen) + 7 (padding for 64 bytes size)) * 2 framebuffer
 	
 	
 				dcb.b	2048,0

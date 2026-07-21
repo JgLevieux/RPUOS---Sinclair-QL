@@ -172,3 +172,72 @@ PlotPixelWhite:
                 PlotPixelStart
 				PlotPixelColor <#ColorPixelWhite>
                 rts
+
+;=============================================================================
+; PlotPixel2 fixed color (assumes coordinates are 0-255)
+; Plot Two screens at the same time
+;=============================================================================
+
+		macro PlotPixelStart2
+			; Compute screen adress
+				move.l  #$20000,a1
+				move.l  #$28000,a4
+                move.w  d0,d2
+                lsr.w   #2,d2
+                lsl.w	#1,d2			; /4, 4 pixels per word. (faster than lsr 1 with and on the emulator)
+                adda.w  d2,a1			; +x screen
+                adda.w  d2,a4			; +x screen
+                move.w  d1,d2
+                lsl.w   #7,d2			; y*128
+                adda.w  d2,a1			; +y screen
+                adda.w  d2,a4			; +y screen
+				
+			; Clean pixel bits
+                move.w  d0,d2
+                andi.w  #3,d2
+                add.w   d2,d2			; *2 lower 2 bits (2, 4, 6 or 8) for rotation -> for pixel X
+
+                move.w  #$3F3F,d3
+                ror.w   d2,d3
+                and.w   d3,(a1)			; clear pixel X
+                and.w   d3,(a4)			; clear pixel X
+		endm
+
+		macro PlotPixelColor2
+                move.w  \1,d3
+                ror.w   d2,d3
+                or.w    d3,(a1)			; set bits for the color
+                or.w    d3,(a4)			; set bits for the color
+		endm
+		
+PlotPixelBlack2:
+                PlotPixelStart2
+                rts
+PlotPixelBlue2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelBlue>
+                rts
+PlotPixelRed2:
+                PlotPixelStart2
+                PlotPixelColor2 <#ColorPixelRed>
+                rts
+PlotPixelMagenta2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelMagenta>
+				rts
+PlotPixelGreen2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelGreen>
+                rts
+PlotPixelCyan2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelCyan>
+                rts
+PlotPixelYellow2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelYellow>
+                rts
+PlotPixelWhite2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelWhite>
+                rts
