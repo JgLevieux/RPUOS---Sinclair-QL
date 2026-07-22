@@ -80,6 +80,8 @@ Start:
 MainLoop:
 			; WaitVBlank
 				bsr		WaitVBlank
+
+				;bra		MainLoop
 				
 			ifd TIMER_MODE
 				move.b	#ScreenMode01,$18063			; Display screen 1
@@ -154,6 +156,8 @@ MainLoop:
 
 				bsr		UpdateTimer
 				bsr		DrawAll
+				
+				;bsr		DrawVblTimer
 
 			ifd TIMER_MODE
 				DisplayOffForProfiling
@@ -438,7 +442,6 @@ DrawAll:
 .noplayercollide:
 				cmp.l	#0,a6		; Any pixel of the drawline touch player line?
 				beq.s	.ContinueDraw
-				DBGBREAK
 				bra		.ContinueDraw
 .QlixOut:
 				DBGBREAK
@@ -2220,12 +2223,49 @@ ClearSprite16x16:
 ; =============================================================================
 WaitVBlank:
 ; from https://www.chibiakumas.com/68000/sinclairql.php
-			   move.b #%11111111,$18021    ;Clear interrupt bits
+			   move.b	#%11111111,$18021    ;Clear interrupt bits
+			   moveq	#0,d1
+			   moveq	#1,d2
 waitVBlankAgain:
-				move.b $18021,d0            ;Read in interrupt state
-				tst.b d0                    ;Wait for an interrupt
-				beq waitVBlankAgain
+				add.l	d2,d1
+				move.b	$18021,d0            ;Read in interrupt state
+				tst.b	d0                    ;Wait for an interrupt
+				beq.s	waitVBlankAgain
+				
+				lea		VBlankTimer(pc),a0
+				move.l	d1,(a0)
+				
 				rts
+
+DrawVblTimer:
+				lea		VBlankTimer(pc),a0
+				move.l	(a0),d0				; max 1260 mesured with debugger
+				lsr.l	#5,d0
+
+				cmp.l	#40,d0
+				bmi.s	.NotTooHigh
+				move.l	#40,d0
+.NotTooHigh:
+
+				lea		ScreenBase(pc),a0
+				move.l	(a0),a0
+				add.l	#128*255,a0
+
+				move.l	#38,d1
+				sub.l	d0,d1
+				sub.l	#1,d1
+				sub.l	#1,d0
+.DrawLoop:
+				move.w	#$AAFF,(a0)+
+				dbra	d1,.DrawLoop
+
+.CleanLoop:
+				clr.w	(a0)+
+				dbra	d0,.CleanLoop
+
+				move.w	#$0055,(a0)+ ; Last pixel to see the end
+				rts
+
 
 ; =============================================================================
 ; Clear screen
@@ -2282,6 +2322,8 @@ GetSinCos:
 				even
 ScreenBase:			dc.l	$20000
 ScreenBaseFront:	dc.l	$28000
+
+VBlankTimer:		dc.l	0
 	even
 BufferNum:		dc.w	0
 	even
