@@ -212,40 +212,72 @@ PlotPixelWhite:
 		
 PlotPixelBlack2:
                 PlotPixelStart2
-				add.w	#1,d0
-                PlotPixelStart2
-				add.w	#1,d1
-                PlotPixelStart2
-				sub.w	#1,d0
-                PlotPixelStart2
                 rts
 PlotPixelBlue2:
-                PlotPixelStart2
-				PlotPixelColor2 <#ColorPixelBlue>
-				add.w	#1,d0
-                PlotPixelStart2
-				PlotPixelColor2 <#ColorPixelBlue>
-				add.w	#1,d1
-                PlotPixelStart2
-				PlotPixelColor2 <#ColorPixelBlue>
-				sub.w	#1,d0
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelBlue>
                 rts
 PlotPixelRed2:
                 PlotPixelStart2
                 PlotPixelColor2 <#ColorPixelRed>
-				;add.w	#1,d0
-                ;PlotPixelStart2
-				;PlotPixelColor2 <#ColorPixelRed>
-				;add.w	#1,d1
-                ;PlotPixelStart2
-				;PlotPixelColor2 <#ColorPixelRed>
-				;sub.w	#1,d0
-                ;PlotPixelStart2
-				;PlotPixelColor2 <#ColorPixelRed>
                 rts
 PlotPixelMagenta2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelMagenta>
+				rts
+PlotPixelGreen2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelGreen>
+                rts
+PlotPixelCyan2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelCyan>
+                rts
+PlotPixelYellow2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelYellow>
+                rts
+PlotPixelWhite2:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelWhite>
+                rts
+
+PlotPixelBlack2x4:
+                PlotPixelStart2
+				add.w	#1,d0
+                PlotPixelStart2
+				add.w	#1,d1
+                PlotPixelStart2
+				sub.w	#1,d0
+                PlotPixelStart2
+                rts
+PlotPixelBlue2x4:
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelBlue>
+				add.w	#1,d0
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelBlue>
+				add.w	#1,d1
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelBlue>
+				sub.w	#1,d0
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelBlue>
+                rts
+PlotPixelRed2x4:
+                PlotPixelStart2
+                PlotPixelColor2 <#ColorPixelRed>
+				add.w	#1,d0
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelRed>
+				add.w	#1,d1
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelRed>
+				sub.w	#1,d0
+                PlotPixelStart2
+				PlotPixelColor2 <#ColorPixelRed>
+                rts
+PlotPixelMagenta2x4:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelMagenta>
 				add.w	#1,d0
@@ -258,7 +290,7 @@ PlotPixelMagenta2:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelMagenta>
 				rts
-PlotPixelGreen2:
+PlotPixelGreen2x4:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelGreen>
 				add.w	#1,d0
@@ -271,7 +303,7 @@ PlotPixelGreen2:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelGreen>
                 rts
-PlotPixelCyan2:
+PlotPixelCyan2x4:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelCyan>
 				add.w	#1,d0
@@ -284,7 +316,7 @@ PlotPixelCyan2:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelCyan>
                 rts
-PlotPixelYellow2:
+PlotPixelYellow2x4:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelYellow>
 				add.w	#1,d0
@@ -297,7 +329,7 @@ PlotPixelYellow2:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelYellow>
                 rts
-PlotPixelWhite2:
+PlotPixelWhite2x4:
                 PlotPixelStart2
 				PlotPixelColor2 <#ColorPixelWhite>
 				add.w	#1,d0

@@ -149,20 +149,20 @@ MainLoop:
 .PlayerMustNotDie:
 
 				lea		Ennemy01(pc),a6
-				;bsr		MoveEnnemy
+				bsr		MoveEnnemy
 				
 				lea		Ennemy02(pc),a6
-				;bsr		MoveEnnemy
+				bsr		MoveEnnemy
 				
 				bsr		MovePlayer
 				
-				;bsr		MoveQLix
+				bsr		MoveQLix
 
 				bsr		UpdateTimer
 				
 				bsr		DrawAll
 				
-				;bsr		DrawVblTimer
+				bsr		DrawVblTimer
 
 			ifd TIMER_MODE
 				DisplayOffForProfiling
@@ -194,6 +194,8 @@ FillingCounter:		dc.l 0
 Score:		dc.l 0
 	even
 Timer:		dc.l 0
+	even
+TimerDisplayed:		dc.l 0
 	even
 FloodFillingStackBottom:
 				dcb.b	2048,0
@@ -304,7 +306,7 @@ CleanPreviousDisplay:
 				move.l	8(a1),d4
 				move.l	12(a1),d5
 				move.l	#ColorPixelBlack,d6
-				;bsr		DrawLineQLix
+				bsr		DrawLineQLix
 
 				rts
 
@@ -436,7 +438,7 @@ DrawAll:
 				cmp.w	#191+PLAYFIELD_START_Y,d1
 				bhi.s	.QlixOut
 
-				;bsr		DrawLineQLix
+				bsr		DrawLineQLix
 
 				cmp.l	#COL_INFO_TRACING,a6		; Any pixel of the drawline touch player line?
 				bne.s	.noplayercollide
@@ -1066,7 +1068,7 @@ FillPlayField:
 				move.w	d5,d1
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelCyan2
+				bsr		PlotPixelCyan2x4
 				bra.s	.doloop
 
 .tobefilledborder:
@@ -1080,7 +1082,7 @@ FillPlayField:
 				move.w	d5,d1
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelWhite2
+				bsr		PlotPixelWhite2x4
 				bra.s	.doloop
 				
 .isfilling:
@@ -1152,7 +1154,7 @@ TouchPlayerTracing:
 				move.w	d5,d1
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelBlack2
+				bsr		PlotPixelBlack2x4
 				bra.s	.doloop
 
 .isfilling:
@@ -1401,28 +1403,47 @@ UpdateText:
 ; TODO : Optimiser en ne faisant qu'un draw au départ et en effacant les pixels du temps qui descend.
 ;=============================================================================
 UpdateTimer:
-				move.l	#208,d4
-				move.l	d4,d0
-				sub.l	#64,d0
-				move.l	#246,d1
-				move.l	d1,d5
-				move.l	#ColorPixelBlack,d6
-				bsr		DrawLine
-
 				lea		Timer(pc),a0
-				sub.l	#256,(a0)
+				sub.l	#5,(a0)
 				ble.s	.nomoretime
-				move.l	#208,d4
-				move.l	d4,d0
-				move.l	(a0),d2
-				lsr.l	#8,d2
-				lsr.l	#6,d2
-				sub.l	d2,d0
-				move.l	#246,d1
-				move.l	d1,d5
-				move.l	#ColorPixelYellow,d6
-				bsr		DrawLine
 
+				move.l	(a0),d0
+				move.l	d0,d2
+				lsr.l	#8,d0
+
+				lea		TimerDisplayed(pc),a0
+				move.l	(a0),d1
+				lsr.l	#8,d1
+				
+				cmp.l	d0,d1
+				beq.s	.EndDisplayTimer
+				
+				move.l	d2,(a0)				; Save displayed timer
+				
+				move.l	#160+64,d0
+				sub.l	d1,d0
+				move.l	#244,d1
+				
+				move.l	d0,d5
+				move.l	d1,d6
+				bsr		PlotPixelBlack2
+				move.l	d5,d0
+				add.l	#1,d6
+				move.l	d6,d1
+				bsr		PlotPixelBlack2
+				move.l	d5,d0
+				add.l	#1,d6
+				move.l	d6,d1
+				bsr		PlotPixelBlack2
+				move.l	d5,d0
+				add.l	#1,d6
+				move.l	d6,d1
+				bsr		PlotPixelBlack2
+				move.l	d5,d0
+				add.l	#1,d6
+				move.l	d6,d1
+				bsr		PlotPixelBlack2
+.EndDisplayTimer:
 				rts
 				
 .nomoretime:
@@ -1581,7 +1602,7 @@ DebugDisplayQLixColInfo:
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_X,d0
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelYellow2
+				bsr		PlotPixelYellow2x4
 				bra.s	.doloop
 .isRed:
 				move.w	d4,d0
@@ -1590,7 +1611,7 @@ DebugDisplayQLixColInfo:
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_X,d0
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelRed2
+				bsr		PlotPixelRed2x4
 				bra.s	.doloop
 .isGreen:
 				move.w	d4,d0
@@ -1599,7 +1620,7 @@ DebugDisplayQLixColInfo:
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_X,d0
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelGreen2
+				bsr		PlotPixelGreen2x4
 				bra.s	.doloop
 .isBlue:
 				move.w	d4,d0
@@ -1608,7 +1629,7 @@ DebugDisplayQLixColInfo:
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_X,d0
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelBlue2
+				bsr		PlotPixelBlue2x4
 				bra.s	.doloop
 .isWhite:
 				move.w	d4,d0
@@ -1617,7 +1638,7 @@ DebugDisplayQLixColInfo:
 				lsl.w	#1,d1
 				add.w	#PLAYFIELD_START_X,d0
 				add.w	#PLAYFIELD_START_Y,d1
-				bsr		PlotPixelWhite2
+				bsr		PlotPixelWhite2x4
 				
 .doloop:				
 				add.w	#1,d4
@@ -1717,7 +1738,9 @@ COL_BORDER_SIZE equ	6
 
 ; Timer
 				lea		Timer(pc),a0
-				move.l	#TIMER_START*256*50,(a0)
+				move.l	#TIMER_START*256,(a0)
+				lea		TimerDisplayed(pc),a0
+				move.l	#TIMER_START*256,(a0)
 
 ; Init ennemies
 				bsr		ResetEnnemiesPosition
@@ -2280,16 +2303,22 @@ DrawVblTimer:
 				move.l	(a0),d0				; max 1260 mesured with debugger
 				lsr.l	#5,d0
 
+				cmp.l	#1,d0
+				bge.s	.check_sup
+				move.l	#1,d0
+				bra.s	.finborne
+
+.check_sup:
 				cmp.l	#40,d0
-				bmi.s	.NotTooHigh
+				ble.s	.finborne
 				move.l	#40,d0
-.NotTooHigh:
+.finborne:
 
 				lea		ScreenBase(pc),a0
 				move.l	(a0),a0
 				add.l	#128*255,a0
 
-				move.l	#38,d1
+				move.l	#41,d1
 				sub.l	d0,d1
 				sub.l	#1,d1
 				sub.l	#1,d0
