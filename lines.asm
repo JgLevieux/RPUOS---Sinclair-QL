@@ -6,13 +6,54 @@
 ; Destroy : Nothing
 ;
 ; Note : Original code generated with AI.
-; TODO : Probably possible to make it faster for black and white (no need to read VRAM?).
+; Largely modified for Qix collision
 ;=============================================================================
 ; G0 F0 G1 F1 G2 F2 G3 F3
 ; R0 B0 R1 B1 R2 B2 R3 B3
 	macro CollideAndSetPixel
-		tst.b	(a3)		; Something in the background?
+		;DBGBREAK
+
+		lea 	QLixCollision(pc),a5
+		move.w	a3,d0
+		lsr.w	#1,d0
+		add.w	d0,a5
+
+		
+		move.w	a4,d0
+		add.w   d0,d0
+		;add.l   d0,d0
+		lea		Table_96(pc),a2
+		add.w  (a2,d0.w),a5
+		;add.w	d0,a5
+
+		;move.l	a4,d0
+		;lsr.l	#1,d0
+		;lsl.l	#6,d0
+		;add.l	d0,a5
+		;move.l	a4,d0
+		;lsr.l	#1,d0
+		;lsl.l	#5,d0
+		;add.l	d0,a5
+
+		;move.l	a4,d0
+		;lsr.l	#1,d0
+		;move.l	d0,a2
+		;add.l	d0,d0
+		;add.l	a2,d0
+		;lsl.l	#5,d0
+		;add.l	d0,a5
+
+		;bra		.noc2\@		; Nothing -> no collision
+
+		tst.b	(a5)		; Something in the background?
 		beq		.noc2\@		; Nothing -> no collision
+
+;COL_INFO_NOTHING	equ		0
+;COL_INFO_WALL		equ		1
+;COL_INFO_TRACING	equ		2
+;COL_INFO_FILLING	equ		3
+;COL_INFO_WAY		equ		4
+;COL_INFO_WAS_A_WAY	equ		5
 
 		;move.w	d3,a4
 		;move.w	d4,a5		; Save d3/d4 if finally no collision
@@ -34,7 +75,7 @@
 		;rol.w	d3,d4
 		;DBGBREAK
 		moveq	#0,d0
-		move.b	(a3),d0
+		move.b	(a5),d0
 		move.l	d0,a6
 	;DBGBREAK
 		movem.l (sp)+,d0-d7/a0-a5
@@ -48,28 +89,58 @@
 		or.w    d3,(a1)		; Add ONLY bits of the color we want to write
 	endm
 
+Table_96:
+    dc.w 0, 0, 96, 96, 192, 192, 288, 288, 384, 384, 480, 480, 576, 576, 672, 672
+    dc.w 768, 768, 864, 864, 960, 960, 1056, 1056, 1152, 1152, 1248, 1248, 1344, 1344, 1440, 1440
+    dc.w 1536, 1536, 1632, 1632, 1728, 1728, 1824, 1824, 1920, 1920, 2016, 2016, 2112, 2112, 2208, 2208
+    dc.w 2304, 2304, 2400, 2400, 2496, 2496, 2592, 2592, 2688, 2688, 2784, 2784, 2880, 2880, 2976, 2976
+    dc.w 3072, 3072, 3168, 3168, 3264, 3264, 3360, 3360, 3456, 3456, 3552, 3552, 3648, 3648, 3744, 3744
+    dc.w 3840, 3840, 3936, 3936, 4032, 4032, 4128, 4128, 4224, 4224, 4320, 4320, 4416, 4416, 4512, 4512
+    dc.w 4608, 4608, 4704, 4704, 4800, 4800, 4896, 4896, 4992, 4992, 5088, 5088, 5184, 5184, 5280, 5280
+    dc.w 5376, 5376, 5472, 5472, 5568, 5568, 5664, 5664, 5760, 5760, 5856, 5856, 5952, 5952, 6048, 6048
+    dc.w 6144, 6144, 6240, 6240, 6336, 6336, 6432, 6432, 6528, 6528, 6624, 6624, 6720, 6720, 6816, 6816
+    dc.w 6912, 6912, 7008, 7008, 7104, 7104, 7200, 7200, 7296, 7296, 7392, 7392, 7488, 7488, 7584, 7584
+    dc.w 7680, 7680, 7776, 7776, 7872, 7872, 7968, 7968, 8064, 8064, 8160, 8160, 8256, 8256, 8352, 8352
+    dc.w 8448, 8448, 8544, 8544, 8640, 8640, 8736, 8736, 8832, 8832, 8928, 8928, 9024, 9024, 9120, 9120
+    dc.w 9216, 9216, 9312, 9312, 9408, 9408, 9504, 9504, 9600, 9600, 9696, 9696, 9792, 9792, 9888, 9888
+    dc.w 9984, 9984, 10080, 10080, 10176, 10176, 10272, 10272, 10368, 10368, 10464, 10464, 10560, 10560, 10656, 10656
+    dc.w 10752, 10752, 10848, 10848, 10944, 10944, 11040, 11040, 11136, 11136, 11232, 11232, 11328, 11328, 11424, 11424
+    dc.w 11520, 11520, 11616, 11616, 11712, 11712, 11808, 11808, 11904, 11904, 12000, 12000, 12096, 12096, 12192, 12192	
+	
 DrawLineQLix:
     movem.l d0-d7/a0-a5,-(sp)
 	move.l	#0,a6
 	lea     ScreenBase(pc),a1				; Screen dest.
 	move.l  (a1),a1
-	lea     QLixCollision(pc),a3			; Qlix Collision
+
+	move.l	#0,a3
+	move.l	#0,a4
+	move.w	d0,a3							; X adr offset - Qlix Collision
+	sub.w	#PLAYFIELD_START_X,a3
+	move.w	d1,d2
+	sub.w	#PLAYFIELD_START_Y,d2
+	;lsl.w	#6,d2	; *64
+	add.w	d2,a4
+	;move.w	d1,d2
+	;sub.w	#PLAYFIELD_START_Y,d2
+	;lsl.w	#5,d2	; *32
+	;add.w	d2,a4	; *96					; Y adr offset - Qlix Collision
 
     ; 1. deltas x/y
     sub.w   d0,d4
     sub.w   d1,d5
 
 	; QLix col start adr
-	move.w	d1,d2
-	move.w	d1,d3
-	sub.l	#PLAYFIELD_START_Y,d2
-	sub.l	#PLAYFIELD_START_Y,d3
-	lsl.w	#6,d2		; y*64
-	lsl.w	#7,d3		; y*128
-	add.w	d3,a3
-	add.w	d2,a3		; +y*192
-	add.w	d0,a3		; +x
-	sub.l	#PLAYFIELD_START_X,a3
+	;move.w	d1,d2
+	;move.w	d1,d3
+	;sub.l	#PLAYFIELD_START_Y,d2
+	;sub.l	#PLAYFIELD_START_Y,d3
+	;lsl.w	#6,d2		; y*64
+	;lsl.w	#7,d3		; y*128
+	;add.w	d3,a3
+	;add.w	d2,a3		; +y*192
+	;add.w	d0,a3		; +x
+	;sub.l	#PLAYFIELD_START_X,a3
 
     ; 2. adresse de base (Y*128 + X/4*2)
     move.w  d1,d2
@@ -124,7 +195,7 @@ DrawLineQLix:
     bge.s   .ny1
     add.w   d4,d6
     lea     128(a1),a1
-    lea     192(a3),a3
+	add.l	#1,a4
 .ny1:
     dbra    d7,.l_x_maj_xp_yp
     bra     .end
@@ -136,7 +207,7 @@ DrawLineQLix:
 .l_y_maj_xp_yp:
 	CollideAndSetPixel
     lea     128(a1),a1
-    lea     192(a3),a3
+    add.l	#1,a4
     sub.w   d4,d6
     bge.s   .nx2
     add.w   d5,d6
@@ -180,7 +251,7 @@ DrawLineQLix:
     bge.s   .ny3
     add.w   d4,d6
     lea     -128(a1),a1
-    lea     -192(a3),a3
+    sub.l	#1,a4
 .ny3:
     dbra    d7,.l_x_maj_xp_yn
     bra     .end
@@ -192,7 +263,7 @@ DrawLineQLix:
 .l_y_maj_xp_yn:
 	CollideAndSetPixel
     lea     -128(a1),a1
-    lea     -192(a3),a3
+    sub.l	#1,a4
     sub.w   d4,d6
     bge.s   .nx4
     add.w   d5,d6
@@ -238,7 +309,7 @@ DrawLineQLix:
     bge.s   .ny5
     add.w   d4,d6
     lea     128(a1),a1
-    lea     192(a3),a3
+    add.l	#1,a4
 .ny5:
     dbra    d7,.l_x_maj_xn_yp
     bra     .end
@@ -250,7 +321,7 @@ DrawLineQLix:
 .l_y_maj_xn_yp:
 	CollideAndSetPixel
     lea     128(a1),a1
-    lea     192(a3),a3
+    add.l	#1,a4
     sub.w   d4,d6
     bge.s   .nx6
     add.w   d5,d6
@@ -292,7 +363,7 @@ DrawLineQLix:
     bge.s   .ny7
     add.w   d4,d6
     lea     -128(a1),a1
-    lea     -192(a3),a3
+    sub.l	#1,a4
 .ny7:
     dbra    d7,.l_x_maj_xn_yn
     bra     .end
@@ -304,7 +375,7 @@ DrawLineQLix:
 .l_y_maj_xn_yn:
 	CollideAndSetPixel
     lea     -128(a1),a1
-    lea     -192(a3),a3
+    sub.l	#1,a4
     sub.w   d4,d6
     bge.s   .nx8
     add.w   d5,d6
@@ -578,5 +649,4 @@ DrawLine:
 .end:
     movem.l (sp)+,d0-d7/a0-a1
     rts
-	
 	
